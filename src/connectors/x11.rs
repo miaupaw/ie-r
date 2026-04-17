@@ -483,7 +483,7 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
                 self.launch_overlay(event_loop, coords);
             }
             UserEvent::OpenHomepage => {
-                tokio::spawn(crate::daemon::open_homepage());
+                crate::daemon::open_homepage();
             }
             UserEvent::Quit => {
                 log_info("Quit event received.");
@@ -492,14 +492,7 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
             UserEvent::EditConfig => {
                 let config_path = crate::core::config::Config::get_config_path();
                 log_info(&format!("Opening config in editor: {:?}", config_path));
-
-                tokio::spawn(async move {
-                    use ashpd::desktop::open_uri::OpenFileRequest;
-
-                    if let Ok(file) = std::fs::File::open(config_path) {
-                        let _ = OpenFileRequest::default().ask(true).send_file(&file).await;
-                    }
-                });
+                let _ = open::that(config_path);
             }
             UserEvent::CopyFromHistory(hex) => {
                 let s = hex.trim_start_matches('#');

@@ -18,11 +18,7 @@ pub enum UserEvent {
     Quit,
 }
 
-/// Opens the homepage via XDG Desktop Portal.
-pub async fn open_homepage() {
-    use ashpd::desktop::open_uri::OpenFileRequest;
-    use ashpd::url::Url;
-    if let Ok(uri) = Url::parse("https://instant-eyedropper.com/?ie-r") {
-        let _ = OpenFileRequest::default().ask(true).send_uri(&uri).await;
-    }
+/// Opens the homepage in the default browser.
+pub fn open_homepage() {
+    let _ = open::that("https://instant-eyedropper.com/linux/?ie-r");
 }

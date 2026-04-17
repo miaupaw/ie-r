@@ -183,15 +183,7 @@ fn run_wayland_daemon() -> Result<()> {
             calloop::channel::Event::Msg(UserEvent::EditConfig) => {
                 let config_path = Config::get_config_path();
                 log_info(&format!("Opening config in editor: {:?}", config_path));
-
-                let rt_handle = tokio::runtime::Handle::current();
-                rt_handle.spawn(async move {
-                    use ashpd::desktop::open_uri::OpenFileRequest;
-
-                    if let Ok(file) = std::fs::File::open(config_path) {
-                        let _ = OpenFileRequest::default().ask(true).send_file(&file).await;
-                    }
-                });
+                let _ = open::that(config_path);
             }
             calloop::channel::Event::Msg(UserEvent::CopyFromHistory(hex)) => {
                 let s = hex.trim_start_matches('#');
@@ -214,6 +206,9 @@ fn run_wayland_daemon() -> Result<()> {
                 {
                     state.about_requested_at = Some(std::time::Instant::now());
                 }
+            }
+            calloop::channel::Event::Msg(UserEvent::OpenHomepage) => {
+                daemon::open_homepage();
             }
             calloop::channel::Event::Msg(UserEvent::Quit) => {
                 state.exit_requested = true;
@@ -263,7 +258,7 @@ fn run_wayland_daemon() -> Result<()> {
             }
 
             if state.wayland.open_url {
-                tokio::spawn(daemon::open_homepage());
+                daemon::open_homepage();
                 state.wayland.open_url = false;
             }
 
