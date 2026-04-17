@@ -12,6 +12,8 @@ IE-R is a color picker and daemon for Linux. It lives in your system tray, liste
 
 This is the resurrection of the original "Instant Eyedropper" tool, which has served users for over 20 years. Now it's a native Wayland app written from scratch in Rust. Same idea — but with everything users asked for over two decades finally built in.
 
+[![IE-R Demo](https://instant-eyedropper.com/linux/poster.png)](https://instant-eyedropper.com/linux/#demo)
+
 ## How it works
 
 Press your hotkey (or click the tray icon). A magnifier appears over your screen. Point at a pixel, click — the color is in your clipboard in whatever format you need. The overlay closes. You paste.
