@@ -142,7 +142,7 @@
                             exit 1
                         fi
 
-                        VERSION="v0.1.0"
+                        VERSION="v0.1.1"
                         STAGE_DIR="tmp/staging"
                         FINAL_DIR="ie-r"
                         ZIP_NAME="ie-r-$VERSION.zip"
@@ -173,7 +173,7 @@
 
             # 1. Native Nix Package
             default = rustPlatform.buildRustPackage {
-                pname = "ie-r"; version = "0.1.0"; src = ./.;
+                pname = "ie-r"; version = "0.1.1"; src = ./.;
                 cargoLock.lockFile = ./Cargo.lock;
                 doCheck = false; # ← skip cargo test in Nix sandbox
                 nativeBuildInputs = nativeDeps;
@@ -291,7 +291,7 @@
 
             # 3. AppImage
             appimage = pkgs.stdenv.mkDerivation {
-                pname = "ie-r-appimage"; version = "0.1.0"; src = ./.;
+                pname = "ie-r-appimage"; version = "0.1.1"; src = ./.;
                 nativeBuildInputs = [ pkgs.appimagekit ];
                 buildCommand = '' # bash
                     mkdir -p AppDir/usr
