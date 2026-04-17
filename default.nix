@@ -9,13 +9,13 @@ in
 
 pkgs.rustPlatform.buildRustPackage {
   pname = "ie-r";
-  version = "0.1.0";
+  version = "0.1.1";
 
   src = pkgs.fetchFromGitHub {
     owner = "miaupaw";
     repo  = "ie-r";
-    rev   = "v0.1.0";
-    hash  = "sha256-bfhOrwcJn4B8UpkAA59YVa9HH29fDcTcMBA7Ot4mwOw=";
+    rev   = "v0.1.1";
+    hash  = "sha256-N7usgQvHwbeodQM2vBI2NxSTIBqCnF6iXiG7gaXeDLI=";
   };
 
   cargoLock.lockFile = ./Cargo.lock;
