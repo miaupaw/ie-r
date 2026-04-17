@@ -32,4 +32,13 @@ pkgs.rustPlatform.buildRustPackage {
     substituteInPlace $out/share/applications/ie-r.desktop \
       --replace-fail "Exec=ie-r" "Exec=$out/bin/ie-r"
   '';
+
+  meta = with pkgs.lib; {
+    description = "Instant Eyedropper Reborn — pixel-perfect color picker for Linux (Wayland & X11)";
+    homepage    = "https://instant-eyedropper.com/linux/";
+    license     = licenses.unfree;
+    mainProgram = "ie-r";
+    platforms   = [ "x86_64-linux" ];
+    sourceProvenance = with sourceTypes; [ fromSource ];
+  };
 }
