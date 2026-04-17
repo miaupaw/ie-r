@@ -274,6 +274,9 @@
                         > $out/share/icons/hicolor/index.theme
                     cp ${default}/share/applications/ie-r.desktop $out/share/
                     cp ${default}/share/licenses/ie-r/LICENSE $out/
+                    cp ${./README.portable.md} $out/README.md
+                    cp ${./PRIVACY.md} $out/PRIVACY.md
+                    cp ${./SECURITY.md} $out/SECURITY.md
 
                     patchelf --set-rpath '$ORIGIN/../lib' $out/bin/.ie-r-raw
 
