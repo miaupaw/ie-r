@@ -162,10 +162,10 @@ All settings live in `~/.config/ie-r/config.toml`. The file is created with defa
 
 IE-R is source-available under a custom license. See [LICENSE](LICENSE) for the full text.
 
-*   **Individuals & small organizations** (<50 employees / <$1M revenue) — free to use.
-*   **Commercial organizations** — paid license required. Single user: $99. Unlimited (site): $999. Details at [instant-eyedropper.com/license](https://instant-eyedropper.com/license).
 *   **Source code** — you may read and modify it for personal use. Public forks, redistribution of modified versions, and incorporation into other projects are not permitted.
+*   **Individuals & small organizations**  — free to use.
+*   **Business** — For business use, please [contact](mailto:info@spicebrains.com) the author .
 
-**Author:** Konstantin Yagola ([instant-eyedropper.com](https://instant-eyedropper.com))
+**Author:** [Konstantin Yagola](mailto:info@spicebrains.com).
 
 *Built with passion in Kyiv, Ukraine.* 🇺🇦
