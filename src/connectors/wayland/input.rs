@@ -297,9 +297,13 @@ impl PointerHandler for IEWaylandState {
                                 tag.yellow().bold(), tile_idx, tile.logical_pos,
                                 self.input.x, self.input.y, ovl_w, ovl_h);
 
+                            let is_same_output = self.active_output.as_ref() == Some(&ovl_output);
                             app.canvas.active_idx = tile_idx;
                             self.active_output = Some(ovl_output);
-                            app.magnifier.reset();
+                            if !is_same_output {
+                                // Cross-monitor transition — full reset with spawn animation.
+                                app.magnifier.reset();
+                            }
                             app.update_physical_mouse(buf_x, buf_y);
                         }
                         self.input.pending_correction = true;
@@ -357,10 +361,10 @@ impl PointerHandler for IEWaylandState {
                         // here in case the Enter was phantom and didn't update it.
                         self.active_output = Some(motion_output);
                         // Enter coords may have been imprecise (stale wl_output.position).
-                        // Motion always gives correct surface-local coords — reset spring so
-                        // the magnifier initializes at the right place without fly-in animation.
+                        // Motion always gives correct surface-local coords.
+                        // Don't reset the magnifier — let the spring chase the corrected target
+                        // naturally, preserving the spawn animation.
                         if self.input.pending_correction {
-                            app.magnifier.reset();
                             self.input.pending_correction = false;
                         }
                         app.update_physical_mouse(buf_pos.0, buf_pos.1);

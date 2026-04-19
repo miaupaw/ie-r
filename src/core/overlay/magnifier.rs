@@ -189,6 +189,7 @@ impl Magnifier {
 
         let stiffness = config.physics.stiffness;
         let damping = config.physics.damping;
+        let pop_effect = config.physics.pop_effect;
 
         self.total_time += dt;
 
@@ -199,9 +200,13 @@ impl Magnifier {
         let f = 1.0 + damping * dt + stiffness * dt * dt;
 
         // 1. Size animation
-        let mut cur_size = self.anim_size.unwrap_or(target_size);
+        // pop_effect = 0.0 → instant appear (anim_size starts at target_size).
+        // pop_effect > 0.0 → spawn animation: start from 0, stiffness = stiffness * pop_effect.
+        let pop_stiffness = stiffness * pop_effect;
+        let pop_f = 1.0 + damping * dt + pop_stiffness * dt * dt;
+        let mut cur_size = self.anim_size.unwrap_or(if pop_effect == 0.0 { target_size } else { 0.0 });
         let ds = target_size - cur_size;
-        self.anim_size_vel = (self.anim_size_vel + dt * stiffness * ds) / f;
+        self.anim_size_vel = (self.anim_size_vel + dt * pop_stiffness * ds) / pop_f;
         cur_size += self.anim_size_vel * dt;
 
         // Stop thresholds for size
@@ -241,12 +246,12 @@ impl Magnifier {
             None
         };
 
-        let target_text_w = match &full_text {
+        let (target_text_w, target_text_h) = match &full_text {
             Some(text) => {
-                let (text_width_px, _) = self.text_renderer.measure_text_bounds(text, scale_mod, line_spacing);
-                text_width_px.ceil() as f64
+                let (w, h) = self.text_renderer.measure_text_bounds(text, scale_mod, line_spacing);
+                (w.ceil() as f64, h.ceil() as usize)
             }
-            None => 0.0,
+            None => (0.0, 0),
         };
 
         let mut cur_text_w = self.anim_text_w.unwrap_or(target_text_w);
@@ -275,26 +280,41 @@ impl Magnifier {
         //   target_x = mx - total_width - offset_x
         // Similarly vertically: if we overflow the bottom edge — clamp to it.
         // Clamp ensures the magnifier doesn't go past the left/top screen edge.
-        let mut target_x = mx + config.magnifier.offset_x as i32;
-        let mut target_y = my - (magnifier_outer_height as i32 / 2) + config.magnifier.offset_y as i32;
+        //
+        // All position target calculations use final sizes (target_size, target_text_w),
+        // not animated values (cur_size, cur_text_w). Otherwise the target drifts as the
+        // magnifier grows — it "slides" instead of growing in place.
+        let final_grid_size = ensure_odd(target_size.round() as i32) as usize;
+        let final_outer_height = final_grid_size + (MARGIN * 2);
+        let final_outer_width = final_grid_size + (MARGIN * 2);
+        let final_text_outer_width = if target_text_w > 0.0 { target_text_w.ceil() as usize + (MARGIN * 2) } else { 0 };
+        let final_total_width = if target_text_w > 0.0 { final_outer_width + final_text_outer_width - MARGIN } else { final_outer_width };
 
-        if target_x + total_width as i32 > width as i32 {
-            target_x = mx - total_width as i32 - config.magnifier.offset_x;
+        let mut target_x = mx + config.magnifier.offset_x as i32;
+        let mut target_y = my - (final_outer_height as i32 / 2) + config.magnifier.offset_y as i32;
+
+        if target_x + final_total_width as i32 > width as i32 {
+            target_x = mx - final_total_width as i32 - config.magnifier.offset_x;
         }
-        if target_y + magnifier_outer_height as i32 > height as i32 {
-            target_y = height as i32 - magnifier_outer_height as i32;
+        if target_y + final_outer_height as i32 > height as i32 {
+            target_y = height as i32 - final_outer_height as i32;
         }
         target_x = target_x.max(0);
         target_y = target_y.max(0);
 
-        let (mut current_x, mut current_y) = self.anim_pos.unwrap_or((target_x as f64, target_y as f64));
-        
+        let (mut current_x, mut current_y) = self.anim_pos.unwrap_or((mx as f64, my as f64));
+
+        // While size is still animating — position uses the same stiffness as the size spring
+        // (pop_stiffness) so both springs stay in sync. Afterwards — switch to global stiffness.
+        let pos_stiffness = if (cur_size - target_size).abs() > 0.5 { pop_stiffness } else { stiffness };
+        let pos_f = 1.0 + damping * dt + pos_stiffness * dt * dt;
+
         let dx = target_x as f64 - current_x;
-        self.anim_vel.0 = (self.anim_vel.0 + dt * stiffness * dx) / f;
+        self.anim_vel.0 = (self.anim_vel.0 + dt * pos_stiffness * dx) / pos_f;
         current_x += self.anim_vel.0 * dt;
 
         let dy = target_y as f64 - current_y;
-        self.anim_vel.1 = (self.anim_vel.1 + dt * stiffness * dy) / f;
+        self.anim_vel.1 = (self.anim_vel.1 + dt * pos_stiffness * dy) / pos_f;
         current_y += self.anim_vel.1 * dt;
 
         // Stop threshold for position
@@ -330,7 +350,7 @@ impl Magnifier {
             buffer, width, height, start_x, start_y, local_mx, local_my, canvas, pixel_scale, aperture, config.magnifier.aim_size as usize, theme, self.total_time,
         );
 
-        if text_box_width > 0 {
+        if text_box_width > 0 && grid_size >= target_text_h {
             let text_box_start_x = start_x + magnifier_outer_width as i32 - MARGIN as i32;
             draw_rect(
                 buffer, width, height, text_box_start_x, start_y, text_outer_width, magnifier_outer_height, frame_color,

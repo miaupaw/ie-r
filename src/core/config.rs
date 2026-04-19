@@ -194,6 +194,8 @@ pub struct PhysicsConfig {
     pub stiffness: f64,
     #[serde(default = "default_damping")]
     pub damping: f64,
+    #[serde(default = "default_pop_effect")]
+    pub pop_effect: f64,
     #[serde(default = "default_blink_effect")]
     pub blink_effect: String,
 }
@@ -339,6 +341,7 @@ fn default_blur_radius() -> i32 { DEFAULT_INSTANCE.physics.blur_radius }
 fn default_glass_opacity() -> f32 { DEFAULT_INSTANCE.physics.glass_opacity }
 fn default_stiffness() -> f64 { DEFAULT_INSTANCE.physics.stiffness }
 fn default_damping() -> f64 { DEFAULT_INSTANCE.physics.damping }
+fn default_pop_effect() -> f64 { DEFAULT_INSTANCE.physics.pop_effect }
 fn default_blink_effect() -> String { DEFAULT_INSTANCE.physics.blink_effect.clone() }
 fn default_selected_template() -> String { DEFAULT_INSTANCE.templates.selected.clone() }
 fn default_float_precision() -> usize { DEFAULT_INSTANCE.templates.float_precision }

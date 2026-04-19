@@ -21,10 +21,10 @@ jump_threshold = 10 # color sensitivity for Ctrl+Arrow jumps (higher = skip more
 # Interface colors in HEX (#RRGGBB).
 # These define the visual identity of the overlay.
 [colors]
-frame       = "#625A93" # outer frame border
+frame       = "#3D367E" # outer frame border
 aim         = "#FF3B3B" # crosshair targeting the center pixel
 grid        = "#000000" # grid lines between zoomed pixels (visible at high zoom)
-foreground  = "#69E6FF" # color code text
+foreground  = "#8DFF9A" # color code text
 background  = "#050523" # frosted glass tint behind the text box
 
 # The HUD is a translucent help panel that slides in from the right edge.
@@ -54,8 +54,9 @@ padding_right = "  "  # decorative padding after text
 [physics]
 blur_radius = 14          # box blur radius for the frosted glass effect
 glass_opacity = 0.55      # 0.0 = fully transparent, 1.0 = solid background color
-stiffness = 300.0         # spring stiffness (higher = snappier response)
-damping = 25.0            # spring damping (higher = less overshoot)
+stiffness = 800.0         # spring stiffness (higher = snappier response)
+damping = 35.0            # spring damping (higher = less overshoot)
+pop_effect = 2.0          # spawn animation: 0.0 = instant, <1.0 = slower, 1.0 = standard, >1.0 = snappier
 blink_effect = "converge" # final pick animation: "none" | "converge"
 
 # Color format templates control what gets copied to clipboard and how

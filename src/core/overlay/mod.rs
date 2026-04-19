@@ -721,7 +721,7 @@ impl OverlayApp {
 
                     // Size: from start_size down to 4px.
                     let size = (blink.start_size * (1.0 - ease) + 4.0).round() as i32;
-                    let border = (6.0 * (1.0 - ease)).round() as i32;
+                    let border = (1.0 * (1.0 - ease)).round() as i32;
                     let border = border.clamp(1, (size - 2).max(2) / 2);
 
                     let half = size / 2;
