@@ -29,6 +29,7 @@ pub struct ColorService {
 impl ColorService {
     pub fn new() -> Self {
         let config = Config::load(false);
+        crate::daemon::dbus_menu::DBusMenu::prime_layout_state(&config);
         let clipboard = Clipboard::new().ok();
         let dbus_conn = zbus::blocking::Connection::session().ok();
 
@@ -63,6 +64,7 @@ impl ColorService {
 
         self.config = Config::load(true);
         log_info("Configuration hot-reloaded");
+        crate::daemon::dbus_menu::DBusMenu::notify_layout_update(&self.config);
         perf.log("Config loaded");
 
         // Font hot-reload: if font family changed, search in the already-loaded database.

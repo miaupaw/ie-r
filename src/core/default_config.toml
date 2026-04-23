@@ -113,10 +113,17 @@ colors = []
 # "none"       — disable tray entirely. SNI is not registered.
 tray_icon = "color"
 
-# Inactivity watchdog timeout (seconds). 
+# Inactivity watchdog timeout (seconds).
 # Automatically cancels the overlay if no movement/input is detected.
 # Set to 0 to disable. (default: 60)
 auto_cancel = 60
+
+# Optional external menu override for wlroots/Wayland popup fallback.
+# Format: TOML string array, where the first item is the executable and the rest are args.
+# Example: menu_command = ["dmenu", "-i", "-p", "IE-R"]
+# No shell parsing or environment expansion is performed here.
+# Leave unset to auto-detect: rofi -> wofi -> fuzzel.
+# menu_command = ["dmenu", "-i", "-p", "IE-R"]
 
 # --- X11 Environments ONLY ---
 # Under X11, the daemon actively polls the keyboard for this hotkey.

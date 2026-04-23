@@ -280,6 +280,8 @@ pub struct SystemConfig {
     pub auto_cancel: u64,
     #[serde(default)]
     pub tray_icon: TrayIcon,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub menu_command: Option<Vec<String>>,
 }
 
 // --- Hex Color Serializer/Deserializer ---
@@ -377,6 +379,29 @@ impl Config {
         base.join("ie-r").join("config.toml")
     }
 
+    fn parse_menu_command_from_str(content: &str) -> Option<Option<Vec<String>>> {
+        let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+        let item = doc.get("system").and_then(|system| system.get("menu_command"));
+
+        match item {
+            Some(item) if item.is_none() => Some(None),
+            Some(item) => {
+                let arr = item.as_array()?;
+                let mut command = Vec::with_capacity(arr.len());
+                for value in arr.iter() {
+                    command.push(value.as_str()?.to_string());
+                }
+                Some(Some(command))
+            }
+            None => Some(None),
+        }
+    }
+
+    pub fn read_menu_command_from_disk() -> Option<Option<Vec<String>>> {
+        let content = fs::read_to_string(Self::get_config_path()).ok()?;
+        Self::parse_menu_command_from_str(&content)
+    }
+
     fn backup_broken_config(path: &std::path::Path) {
         if !path.exists() {
             return;
@@ -436,7 +461,12 @@ impl Config {
             }
         };
 
-        let Ok(new_toml_str) = toml_edit::ser::to_string(self) else { return };
+        let mut merged = self.clone();
+        if let Some(menu_command) = Self::parse_menu_command_from_str(&existing_content) {
+            merged.system.menu_command = menu_command;
+        }
+
+        let Ok(new_toml_str) = toml_edit::ser::to_string(&merged) else { return };
         let Ok(new_doc) = new_toml_str.parse::<toml_edit::DocumentMut>() else { return };
 
         let root = doc.as_table_mut();

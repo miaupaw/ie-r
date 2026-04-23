@@ -37,6 +37,8 @@ struct MenuState {
     history: Vec<String>,
     /// History reversal flag. Applied on each MenuSnapshot::take().
     reverse_order: bool,
+    /// Optional external launcher override for wlroots popup fallback.
+    menu_command: Option<Vec<String>>,
     /// Selected format template key (e.g. "hex", "rgb", "hsl").
     selected_template: String,
     /// HUD visibility state (the "Show HUD" checkbox in the menu).
@@ -51,6 +53,7 @@ impl MenuState {
         Self {
             history: Vec::new(),
             reverse_order: false,
+            menu_command: None,
             selected_template: String::new(),
             show_hud: true,
             png_cache: HashMap::new(),
@@ -64,6 +67,7 @@ static MENU_STATE: LazyLock<RwLock<MenuState>> = LazyLock::new(|| RwLock::new(Me
 /// Read from caches (not disk), guaranteed consistent.
 pub struct MenuSnapshot {
     pub history: Vec<String>,
+    pub menu_command: Option<Vec<String>>,
     pub selected_template: String,
     pub show_hud: bool,
 }
@@ -79,6 +83,7 @@ impl MenuSnapshot {
         };
         Self {
             history,
+            menu_command: state.menu_command.clone(),
             selected_template: state.selected_template.clone(),
             show_hud: state.show_hud,
         }
@@ -337,15 +342,18 @@ impl DBusMenu {
 }
 
 impl DBusMenu {
+    fn sync_state(config: &crate::core::config::Config) {
+        let mut state = MENU_STATE.write().unwrap();
+        state.history = config.history.colors.clone();
+        state.reverse_order = config.history.reverse_order;
+        state.menu_command = config.system.menu_command.clone();
+        state.selected_template = config.templates.selected.clone();
+        state.show_hud = config.hud.show;
+    }
+
     pub fn new(proxy: EventSender) -> Self {
         let config = crate::core::config::Config::load(true);
-        {
-            let mut state = MENU_STATE.write().unwrap();
-            state.history = config.history.colors;
-            state.reverse_order = config.history.reverse_order;
-            state.selected_template = config.templates.selected.clone();
-            state.show_hud = config.hud.show;
-        }
+        Self::sync_state(&config);
 
         Self {
             proxy,
@@ -361,14 +369,11 @@ impl DBusMenu {
     /// Accepts a ready config — no disk read (data is current after save()).
     pub fn notify_layout_update(config: &crate::core::config::Config) {
         {
-            let mut state = MENU_STATE.write().unwrap();
-            state.history = config.history.colors.clone();
-            state.reverse_order = config.history.reverse_order;
-            state.selected_template = config.templates.selected.clone();
-            state.show_hud = config.hud.show;
+            Self::sync_state(config);
             // Prune PNG cache: remove icons for colors no longer in history.
             // Without this the cache grows unboundedly over long daemon runs.
             // Stale keys are collected separately to avoid borrow conflict with history.
+            let mut state = MENU_STATE.write().unwrap();
             let stale: Vec<String> = state.png_cache.keys()
                 .filter(|hex| !state.history.contains(hex))
                 .cloned()
@@ -378,6 +383,10 @@ impl DBusMenu {
             }
         }
         Self::emit_layout_signal();
+    }
+
+    pub fn prime_layout_state(config: &crate::core::config::Config) {
+        Self::sync_state(config);
     }
 
     /// Updates only the selected template (without touching history).
