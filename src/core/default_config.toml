@@ -17,6 +17,7 @@ size = 141          # physical window size on screen (px)
 offset_x = 100      # horizontal offset from cursor
 offset_y = 0        # vertical offset from cursor
 jump_threshold = 10 # color sensitivity for Ctrl+Arrow jumps (higher = skip more gradients)
+show_coordinates = false # show current center pixel coordinates inside the magnifier corner
 
 # Interface colors in HEX (#RRGGBB).
 # These define the visual identity of the overlay.

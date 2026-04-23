@@ -140,6 +140,8 @@ pub struct MagnifierConfig {
     pub offset_y: i32,
     #[serde(default = "default_jump_threshold")]
     pub jump_threshold: i32,
+    #[serde(default = "default_show_coordinates")]
+    pub show_coordinates: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -322,6 +324,7 @@ fn default_size() -> u32 { DEFAULT_INSTANCE.magnifier.size }
 fn default_offset_x() -> i32 { DEFAULT_INSTANCE.magnifier.offset_x }
 fn default_offset_y() -> i32 { DEFAULT_INSTANCE.magnifier.offset_y }
 fn default_jump_threshold() -> i32 { DEFAULT_INSTANCE.magnifier.jump_threshold }
+fn default_show_coordinates() -> bool { DEFAULT_INSTANCE.magnifier.show_coordinates }
 fn default_frame() -> u32 { DEFAULT_INSTANCE.colors.frame }
 fn default_aim() -> u32 { DEFAULT_INSTANCE.colors.aim }
 fn default_background() -> u32 { DEFAULT_INSTANCE.colors.background }

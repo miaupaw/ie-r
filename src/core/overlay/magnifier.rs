@@ -19,6 +19,8 @@ pub struct RenderCtx<'a> {
 }
 
 const MARGIN: usize = 1;
+const COORDS_FONT_RATIO: f32 = 18.0 / 58.0;
+const COORDS_MIN_FONT_SIZE: f32 = 10.0;
 
 /// Single source of truth: rounds value up to the nearest odd number.
 /// Critical for the "Optical Monolith" — perfect aim centering on a single pixel.
@@ -52,6 +54,7 @@ pub struct Magnifier {
     anim_text_w_vel: f64,
 
     text_renderer: TextRenderer,
+    coords_renderer: TextRenderer,
     total_time: f64,
 }
 
@@ -64,7 +67,8 @@ impl Magnifier {
             anim_size_vel: 0.0,
             anim_text_w: None,
             anim_text_w_vel: 0.0,
-            text_renderer: TextRenderer::new(font_data, font_size),
+            text_renderer: TextRenderer::new(font_data.clone(), font_size),
+            coords_renderer: TextRenderer::new(font_data, Self::coords_font_size(font_size)),
             total_time: 0.0,
         }
     }
@@ -81,6 +85,7 @@ impl Magnifier {
 
     pub fn update_scale(&mut self, font_size: f32) {
         self.text_renderer.update_size(font_size);
+        self.coords_renderer.update_size(Self::coords_font_size(font_size));
     }
 
     /// Returns the exact center of the magnifier window, accounting for physics and scaling.
@@ -117,6 +122,14 @@ impl Magnifier {
             })
             .collect();
         display_lines.join("\n")
+    }
+
+    fn format_coordinates(x: i32, y: i32) -> String {
+        format!("({}, {})", x.max(0), y.max(0))
+    }
+
+    fn coords_font_size(font_size: f32) -> f32 {
+        (font_size * COORDS_FONT_RATIO).max(COORDS_MIN_FONT_SIZE)
     }
 
     /// Estimates text block height for the given font size (or current if None).
@@ -327,7 +340,7 @@ impl Magnifier {
             self.anim_vel.1 = 0.0;
         }
 
-        let animating = cur_size != target_size 
+        let animating = cur_size != target_size
                         || cur_text_w != target_text_w
                         || current_x != target_x as f64 || current_y != target_y as f64;
 
@@ -350,6 +363,9 @@ impl Magnifier {
             buffer, width, height, start_x, start_y, local_mx, local_my, canvas, pixel_scale, aperture, config.magnifier.aim_size as usize, theme, self.total_time,
         );
 
+        let coords_text = config.magnifier.show_coordinates
+            .then(|| Self::format_coordinates(local_mx, local_my));
+
         if text_box_width > 0 && grid_size >= target_text_h {
             let text_box_start_x = start_x + magnifier_outer_width as i32 - MARGIN as i32;
             draw_rect(
@@ -366,6 +382,28 @@ impl Magnifier {
                     buffer, width, height, text_box_start_x + 1, start_y + 1, text_box_width, magnifier_outer_height - 2,
                     text, theme.foreground, &self.text_renderer, scale_mod, line_spacing, config.font.dim_zeros, true,
                 );
+
+                if let Some(ref coords_text) = coords_text {
+                    let coords_font_size = Self::coords_font_size(config.font.size);
+                    draw_coordinate_badge_in_text_box(
+                        buffer,
+                        width,
+                        height,
+                        text_box_start_x + 1,
+                        start_y + 1,
+                        text_box_width,
+                        magnifier_outer_height - 2,
+                        text,
+                        coords_text,
+                        theme,
+                        frame_color,
+                        &self.text_renderer,
+                        scale_mod,
+                        line_spacing,
+                        coords_font_size,
+                        &self.coords_renderer,
+                    );
+                }
             }
         }
 
@@ -378,7 +416,7 @@ impl Magnifier {
             let fy = start_y + 1;
             let fw = grid_size;
             let fh = grid_size;
-            
+
             for row in (fy.max(0) as usize)..((fy + fh as i32).max(0) as usize).min(height) {
                 let row_start = row * width;
                 for col in (fx.max(0) as usize)..((fx + fw as i32).max(0) as usize).min(width) {
@@ -387,12 +425,12 @@ impl Magnifier {
                     let r = ((bg >> 16) & 0xFF) as u8;
                     let g = ((bg >> 8) & 0xFF) as u8;
                     let b = (bg & 0xFF) as u8;
-                    
+
                     let inv_a = 255 - alpha;
                     let nr = (((r as u32) * inv_a + 255 * alpha) / 255) as u8;
                     let ng = (((g as u32) * inv_a + 255 * alpha) / 255) as u8;
                     let nb = (((b as u32) * inv_a + 255 * alpha) / 255) as u8;
-                    
+
                     buffer[idx] = ((nr as u32) << 16) | ((ng as u32) << 8) | (nb as u32);
                 }
             }
@@ -616,5 +654,85 @@ fn draw_hex_text(
         dim_opacity,
         center_x,
         box_w,
+    );
+}
+
+fn draw_coordinate_badge_in_text_box(
+    buffer: &mut [u32],
+    width: usize,
+    height: usize,
+    box_x: i32,
+    box_y: i32,
+    box_w: usize,
+    box_h: usize,
+    main_text: &str,
+    coords_text: &str,
+    theme: &ColorsConfig,
+    frame_color: u32,
+    main_text_renderer: &TextRenderer,
+    main_scale_modifier: f32,
+    main_line_spacing: f32,
+    coords_font_size: f32,
+    text_renderer: &TextRenderer,
+) {
+    const BASE_SCALE: f32 = 1.0;
+    const TEXT_LINE_SPACING: f32 = 1.0;
+    const TEXT_PADDING_X: usize = 4;
+    const TEXT_PADDING_Y: usize = 3;
+    const BADGE_INSET: i32 = 4;
+    const TEXT_CLEARANCE: i32 = 4;
+
+    let (coords_w, coords_h) = text_renderer.measure_text_bounds(coords_text, BASE_SCALE, TEXT_LINE_SPACING);
+    if coords_w <= 0.0 || coords_h <= 0.0 {
+        return;
+    }
+
+    let box_right = box_x + box_w as i32;
+    let box_bottom = box_y + box_h as i32;
+    let available_w = (box_w as i32 - BADGE_INSET * 2).max(0) as f32;
+
+    let (_, main_text_h) = main_text_renderer.measure_text_bounds(main_text, main_scale_modifier, main_line_spacing);
+    let text_bottom = (box_y as f32 + box_h as f32 / 2.0 + main_text_h / 2.0).round() as i32;
+    let available_h = (box_bottom - BADGE_INSET - (text_bottom + TEXT_CLEARANCE)).max(0) as f32;
+
+    let scale_x = (available_w - (TEXT_PADDING_X * 2) as f32) / coords_w;
+    let scale_y = (available_h - (TEXT_PADDING_Y * 2) as f32) / coords_h;
+    let scale = BASE_SCALE.min(scale_x.min(scale_y));
+    let min_scale = (COORDS_MIN_FONT_SIZE / coords_font_size).min(1.0);
+    if scale < min_scale {
+        return;
+    }
+
+    let pad_x = ((TEXT_PADDING_X as f32) * scale.max(0.5)).ceil().max(2.0) as usize;
+    let pad_y = ((TEXT_PADDING_Y as f32) * scale.max(0.5)).ceil().max(2.0) as usize;
+    let badge_w = coords_w.mul_add(scale, (pad_x * 2) as f32).ceil() as usize;
+    let badge_h = coords_h.mul_add(scale, (pad_y * 2) as f32).ceil() as usize;
+    if badge_w == 0 || badge_h == 0 {
+        return;
+    }
+
+    let badge_x = box_right - BADGE_INSET - badge_w as i32;
+    let badge_y = box_bottom - BADGE_INSET - badge_h as i32;
+    if badge_x < box_x + BADGE_INSET || badge_y < text_bottom + TEXT_CLEARANCE {
+        return;
+    }
+
+    draw_filled_rect(buffer, width, height, badge_x, badge_y, badge_w, badge_h, theme.background);
+    draw_rect(buffer, width, height, badge_x, badge_y, badge_w, badge_h, frame_color);
+    draw_hex_text(
+        buffer,
+        width,
+        height,
+        badge_x + pad_x as i32,
+        badge_y + pad_y as i32,
+        badge_w - pad_x * 2,
+        badge_h - pad_y * 2,
+        coords_text,
+        theme.foreground,
+        text_renderer,
+        scale,
+        TEXT_LINE_SPACING,
+        1.0,
+        false,
     );
 }
