@@ -20,7 +20,7 @@ pub struct RenderCtx<'a> {
 
 const MARGIN: usize = 1;
 const COORDS_FONT_RATIO: f32 = 18.0 / 58.0;
-const COORDS_MIN_FONT_SIZE: f32 = 10.0;
+const COORDS_BASE_FONT_SIZE: f32 = 10.0;
 
 /// Single source of truth: rounds value up to the nearest odd number.
 /// Critical for the "Optical Monolith" — perfect aim centering on a single pixel.
@@ -129,7 +129,7 @@ impl Magnifier {
     }
 
     fn coords_font_size(font_size: f32) -> f32 {
-        (font_size * COORDS_FONT_RATIO).max(COORDS_MIN_FONT_SIZE)
+        (font_size * COORDS_FONT_RATIO).max(COORDS_BASE_FONT_SIZE)
     }
 
     /// Estimates text block height for the given font size (or current if None).
@@ -384,7 +384,6 @@ impl Magnifier {
                 );
 
                 if let Some(ref coords_text) = coords_text {
-                    let coords_font_size = Self::coords_font_size(config.font.size);
                     draw_coordinate_badge_in_text_box(
                         buffer,
                         width,
@@ -400,7 +399,6 @@ impl Magnifier {
                         &self.text_renderer,
                         scale_mod,
                         line_spacing,
-                        coords_font_size,
                         &self.coords_renderer,
                     );
                 }
@@ -672,34 +670,31 @@ fn draw_coordinate_badge_in_text_box(
     main_text_renderer: &TextRenderer,
     main_scale_modifier: f32,
     main_line_spacing: f32,
-    coords_font_size: f32,
     text_renderer: &TextRenderer,
 ) {
     const BASE_SCALE: f32 = 1.0;
     const TEXT_LINE_SPACING: f32 = 1.0;
-    const TEXT_PADDING_X: usize = 4;
+    const TEXT_PADDING_X: usize = 5;
     const TEXT_PADDING_Y: usize = 3;
     const BADGE_INSET: i32 = 4;
-    const TEXT_CLEARANCE: i32 = 4;
+    const TEXT_CLEARANCE_X: i32 = 6;
+    const TEXT_CLEARANCE_Y: i32 = 4;
+    const MIN_VISIBLE_SCALE: f32 = 0.18;
 
     let (coords_w, coords_h) = text_renderer.measure_text_bounds(coords_text, BASE_SCALE, TEXT_LINE_SPACING);
     if coords_w <= 0.0 || coords_h <= 0.0 {
         return;
     }
 
+    let (main_text_w, main_text_h) = main_text_renderer.measure_text_bounds(main_text, main_scale_modifier, main_line_spacing);
     let box_right = box_x + box_w as i32;
     let box_bottom = box_y + box_h as i32;
-    let available_w = (box_w as i32 - BADGE_INSET * 2).max(0) as f32;
-
-    let (_, main_text_h) = main_text_renderer.measure_text_bounds(main_text, main_scale_modifier, main_line_spacing);
-    let text_bottom = (box_y as f32 + box_h as f32 / 2.0 + main_text_h / 2.0).round() as i32;
-    let available_h = (box_bottom - BADGE_INSET - (text_bottom + TEXT_CLEARANCE)).max(0) as f32;
-
-    let scale_x = (available_w - (TEXT_PADDING_X * 2) as f32) / coords_w;
-    let scale_y = (available_h - (TEXT_PADDING_Y * 2) as f32) / coords_h;
+    let inner_w = (box_w as i32 - BADGE_INSET * 2).max(0) as f32;
+    let inner_h = (box_h as i32 - BADGE_INSET * 2).max(0) as f32;
+    let scale_x = (inner_w - (TEXT_PADDING_X * 2) as f32) / coords_w;
+    let scale_y = (inner_h - (TEXT_PADDING_Y * 2) as f32) / coords_h;
     let scale = BASE_SCALE.min(scale_x.min(scale_y));
-    let min_scale = (COORDS_MIN_FONT_SIZE / coords_font_size).min(1.0);
-    if scale < min_scale {
+    if !scale.is_finite() || scale < MIN_VISIBLE_SCALE {
         return;
     }
 
@@ -711,13 +706,39 @@ fn draw_coordinate_badge_in_text_box(
         return;
     }
 
-    let badge_x = box_right - BADGE_INSET - badge_w as i32;
-    let badge_y = box_bottom - BADGE_INSET - badge_h as i32;
-    if badge_x < box_x + BADGE_INSET || badge_y < text_bottom + TEXT_CLEARANCE {
-        return;
-    }
+    let text_left = (box_x as f32 + (box_w as f32 - main_text_w) / 2.0).floor() as i32;
+    let text_top = (box_y as f32 + (box_h as f32 - main_text_h) / 2.0).floor() as i32;
+    let protected_text_rect = (
+        text_left - TEXT_CLEARANCE_X,
+        text_top - TEXT_CLEARANCE_Y,
+        main_text_w.ceil() as i32 + TEXT_CLEARANCE_X * 2,
+        main_text_h.ceil() as i32 + TEXT_CLEARANCE_Y * 2,
+    );
 
-    draw_filled_rect(buffer, width, height, badge_x, badge_y, badge_w, badge_h, theme.background);
+    let candidate_positions = [
+        (box_right - BADGE_INSET - badge_w as i32, box_bottom - BADGE_INSET - badge_h as i32),
+        (box_right - BADGE_INSET - badge_w as i32, box_y + BADGE_INSET),
+        (box_x + BADGE_INSET, box_bottom - BADGE_INSET - badge_h as i32),
+        (box_x + BADGE_INSET, box_y + BADGE_INSET),
+        (
+            box_right - BADGE_INSET - badge_w as i32,
+            box_y + ((box_h as i32 - badge_h as i32) / 2),
+        ),
+        (
+            box_x + BADGE_INSET,
+            box_y + ((box_h as i32 - badge_h as i32) / 2),
+        ),
+    ];
+
+    let Some((badge_x, badge_y)) = candidate_positions
+        .into_iter()
+        .find(|&(x, y)| {
+            rect_fits_inside((x, y, badge_w as i32, badge_h as i32), (box_x, box_y, box_w as i32, box_h as i32), BADGE_INSET)
+                && !rects_intersect((x, y, badge_w as i32, badge_h as i32), protected_text_rect)
+        }) else {
+            return;
+        };
+
     draw_rect(buffer, width, height, badge_x, badge_y, badge_w, badge_h, frame_color);
     draw_hex_text(
         buffer,
@@ -735,4 +756,20 @@ fn draw_coordinate_badge_in_text_box(
         1.0,
         false,
     );
+}
+
+fn rect_fits_inside(rect: (i32, i32, i32, i32), bounds: (i32, i32, i32, i32), inset: i32) -> bool {
+    let (x, y, w, h) = rect;
+    let (bx, by, bw, bh) = bounds;
+    x >= bx + inset
+        && y >= by + inset
+        && x + w <= bx + bw - inset
+        && y + h <= by + bh - inset
+}
+
+fn rects_intersect(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
+    let (ax, ay, aw, ah) = a;
+    let (bx, by, bw, bh) = b;
+
+    ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
 }
