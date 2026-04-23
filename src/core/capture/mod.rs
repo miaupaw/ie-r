@@ -34,6 +34,7 @@ pub struct MonitorTile {
     pub scale: f64,
     /// Logical position of this monitor in compositor space.
     pub logical_pos: (i32, i32),
+    pub transform: wl_output::Transform,
 }
 
 impl MonitorTile {
@@ -44,13 +45,16 @@ impl MonitorTile {
         output: wl_output::WlOutput,
         logical_pos: (i32, i32),
         logical_w: i32,
+        transform: wl_output::Transform,
     ) -> Self {
+        let capture = apply_transform(capture, transform);
+
         let scale = if logical_w > 0 {
             capture.width as f64 / logical_w as f64
         } else {
             1.0
         };
-        Self { capture, output: Some(output), scale, logical_pos }
+        Self { capture, output: Some(output), scale, logical_pos, transform }
     }
 }
 
@@ -88,6 +92,7 @@ impl PhysicalCanvas {
                 output,
                 scale: 1.0,
                 logical_pos: (0, 0),
+                transform: wl_output::Transform::Normal,
             }],
             active_idx: 0,
         }
@@ -168,6 +173,96 @@ impl PhysicalCanvas {
     }
 }
 
+fn apply_transform(capture: ScreenCapture, transform: wl_output::Transform) -> ScreenCapture {
+    let src_w = capture.width as usize;
+    let src_h = capture.height as usize;
+    let src = &capture.xrgb_buffer;
+
+    match transform {
+        wl_output::Transform::Normal => capture,
+
+        wl_output::Transform::_90 => {
+            let dst_w = src_h;
+            let dst_h = src_w;
+            let mut dst = vec![0u32; dst_w * dst_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[x * dst_w + (src_h - 1 - y)] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
+        }
+
+        wl_output::Transform::_180 => {
+            let mut dst = vec![0u32; src_w * src_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[(src_h - 1 - y) * src_w + (src_w - 1 - x)] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: capture.width, height: capture.height }
+        }
+
+        wl_output::Transform::_270 => {
+            let dst_w = src_h;
+            let dst_h = src_w;
+            let mut dst = vec![0u32; dst_w * dst_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[(src_w - 1 - x) * dst_w + y] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
+        }
+
+        wl_output::Transform::Flipped => {
+            let mut dst = vec![0u32; src_w * src_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[y * src_w + (src_w - 1 - x)] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: capture.width, height: capture.height }
+        }
+
+        wl_output::Transform::Flipped90 => {
+            let dst_w = src_h;
+            let dst_h = src_w;
+            let mut dst = vec![0u32; dst_w * dst_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[(src_w - 1 - x) * dst_w + (src_h - 1 - y)] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
+        }
+
+        wl_output::Transform::Flipped180 => {
+            let mut dst = vec![0u32; src_w * src_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[(src_h - 1 - y) * src_w + x] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: capture.width, height: capture.height }
+        }
+
+        wl_output::Transform::Flipped270 => {
+            let dst_w = src_h;
+            let dst_h = src_w;
+            let mut dst = vec![0u32; dst_w * dst_h];
+            for y in 0..src_h {
+                for x in 0..src_w {
+                    dst[x * dst_w + y] = src[y * src_w + x];
+                }
+            }
+            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
+        }
+
+        _ => capture,
+    }
+}
+
 /// Convert decoded RGBA image to XRGB u32 buffer
 pub(crate) fn rgba_to_capture(img: &image::RgbaImage) -> ScreenCapture {
     let (w, h) = img.dimensions();
@@ -202,6 +297,7 @@ pub struct OutputMeta {
     pub name: String,
     pub logical_pos: (i32, i32),
     pub logical_w: i32,
+    pub transform: wl_output::Transform,
 }
 
 /// Capture all monitors, selecting the best available protocol.
@@ -219,9 +315,10 @@ pub fn capture_all_outputs(
             let out_clone = meta.output.clone();
             let logical_pos = meta.logical_pos;
             let logical_w = meta.logical_w;
+            let transform = meta.transform;
             std::thread::spawn(move || {
                 wlr::capture_output(&conn, &manager, &wl_shm, &out_clone)
-                    .map(|capture| MonitorTile::from_capture(capture, out_clone, logical_pos, logical_w))
+                    .map(|capture| MonitorTile::from_capture(capture, out_clone, logical_pos, logical_w, transform))
             })
         }).collect();
 
@@ -247,6 +344,7 @@ pub fn capture_all_outputs(
                         meta.output.clone(),
                         meta.logical_pos,
                         meta.logical_w,
+                        meta.transform,
                     )),
                     Err(e) => {
                         let e_str = e.to_string();
