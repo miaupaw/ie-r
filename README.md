@@ -3,7 +3,7 @@
 [![Built with Nix](https://img.shields.io/badge/Nix-Flake-blue.svg?logo=nixos&logoColor=white)](https://nixos.org)
 [![Language: Rust](https://img.shields.io/badge/Language-Rust-orange.svg?logo=rust)](https://www.rust-lang.org)
 
-**A high-performance, system-wide color picker for Linux (Wayland & X11).**  
+**A high-performance, system-wide color picker for Linux (Wayland & X11).**
 Click → Color → Done. Zero latency, pixel-perfect precision.
 
 ---
@@ -154,7 +154,7 @@ cp ~/.local/share/applications/ie-r.desktop ~/.config/autostart/
 
 ### Configuration
 
-All settings live in `~/.config/ie-r/config.toml`. The file is created with defaults on first run. IE-R preserves your comments when updating the config.
+Settings live in `~/.config/ie-r/config.toml`. Picked color history lives in `~/.local/state/ie-r/history.toml`. Both files are created as needed on first run, and IE-R preserves your comments when updating the config.
 
 ---
 

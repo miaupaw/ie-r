@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::ErrorKind;
 use crate::core::terminal::{log_step, log_warn, log_error};
 
 // ==============================================================================
@@ -252,8 +253,14 @@ pub struct HistoryConfig {
     pub size: usize,
     #[serde(default = "default_history_reverse")]
     pub reverse_order: bool,
-    #[serde(default = "default_history_colors")]
+    #[serde(default = "default_history_colors", skip_serializing)]
     pub colors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct PersistedHistory {
+    #[serde(default = "default_history_colors")]
+    colors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -379,6 +386,13 @@ impl Config {
         base.join("ie-r").join("config.toml")
     }
 
+    pub fn get_history_path() -> std::path::PathBuf {
+        let base = std::env::var("XDG_STATE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| dirs_next().join(".local").join("state"));
+        base.join("ie-r").join("history.toml")
+    }
+
     fn parse_menu_command_from_str(content: &str) -> Option<Option<Vec<String>>> {
         let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
         let item = doc.get("system").and_then(|system| system.get("menu_command"));
@@ -402,36 +416,79 @@ impl Config {
         Self::parse_menu_command_from_str(&content)
     }
 
-    fn backup_broken_config(path: &std::path::Path) {
+    fn backup_broken_file(path: &std::path::Path, prefix: &str) {
         if !path.exists() {
             return;
         }
         if let Some(dir) = path.parent() {
             for idx in 1..=99 {
-                let backup_path = dir.join(format!("config_broken_{:02}.toml", idx));
+                let backup_path = dir.join(format!("{}_broken_{:02}.toml", prefix, idx));
                 if !backup_path.exists() {
                     if let Ok(_) = fs::rename(path, &backup_path) {
-                        log_step("Config", &format!("Broken config moved to {:?}", backup_path));
+                        log_step("Config", &format!("Broken {} moved to {:?}", prefix, backup_path));
                     }
                     return;
                 }
             }
-            log_error("Too many broken configs! Backup skipped.");
+            log_error(&format!("Too many broken {} files! Backup skipped.", prefix));
         }
+    }
+
+    fn load_history_colors(path: &std::path::Path, legacy_colors: Vec<String>) -> Vec<String> {
+        match fs::read_to_string(path) {
+            Ok(content) => match toml_edit::de::from_str::<PersistedHistory>(&content) {
+                Ok(history) => history.colors,
+                Err(e) => {
+                    log_error(&format!("Error parsing {:?}: {}", path, e));
+                    Self::backup_broken_file(path, "history");
+                    log_warn("Falling back to config-embedded history.");
+                    legacy_colors
+                }
+            },
+            Err(e) if e.kind() == ErrorKind::NotFound => legacy_colors,
+            Err(e) => {
+                log_error(&format!("Error reading {:?}: {}", path, e));
+                log_warn("Falling back to config-embedded history.");
+                legacy_colors
+            }
+        }
+    }
+
+    fn save_history(&self) -> Result<(), String> {
+        let path = Self::get_history_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Error creating history directory {:?}: {}", parent, e))?;
+        }
+
+        let persisted = PersistedHistory {
+            colors: self.history.colors.clone(),
+        };
+
+        let toml = toml_edit::ser::to_string(&persisted)
+            .map_err(|e| format!("Error serializing {:?}: {}", path, e))?;
+        fs::write(&path, toml)
+            .map_err(|e| format!("Error writing {:?}: {}", path, e))?;
+        log_step("Config", &format!("Saved history: {:?}", path));
+        Ok(())
     }
 
     /// Loads config from disk. Falls back to defaults if the file is missing or invalid.
     pub fn load(silent: bool) -> Self {
         let path = Self::get_config_path();
-        if let Ok(content) = fs::read_to_string(&path) {
-            match toml_edit::de::from_str(&content) {
-                Ok(config) => {
+        let mut loaded_from_config = false;
+        let mut config = if let Ok(content) = fs::read_to_string(&path) {
+            match toml_edit::de::from_str::<Config>(&content) {
+                Ok(mut config) => {
+                    loaded_from_config = true;
                     if !silent { log_step("Config", &format!("Target confirmed: {:?}", path)); }
+                    let legacy_colors = config.history.colors.clone();
+                    config.history.colors = Self::load_history_colors(&Self::get_history_path(), legacy_colors);
                     config
                 }
                 Err(e) => {
                     log_error(&format!("Error parsing {:?}: {}", path, e));
-                    Self::backup_broken_config(&path);
+                    Self::backup_broken_file(&path, "config");
                     log_warn("Falling back to defaults. Backup created.");
                     let _ = fs::write(&path, DEFAULT_CONFIG_TEMPLATE);
                     Self::default()
@@ -442,10 +499,15 @@ impl Config {
             let _ = fs::write(&path, DEFAULT_CONFIG_TEMPLATE);
             log_step("Config", &format!("Initialized new config from template: {:?}", path));
             Self::default()
+        };
+
+        if !loaded_from_config && config.history.colors.is_empty() {
+            config.history.colors = Self::load_history_colors(&Self::get_history_path(), Vec::new());
         }
+        config
     }
 
-    /// Surgically saves current settings to disk, preserving user comments.
+    /// Surgically saves current settings to disk, preserving user comments in config.toml.
     pub fn save(&self) {
         let path = Self::get_config_path();
         if let Some(parent) = path.parent() { let _ = fs::create_dir_all(parent); }
@@ -456,7 +518,7 @@ impl Config {
             Ok(d) => d,
             Err(_) => {
                 log_warn("Repairing corrupted config using template foundation...");
-                Self::backup_broken_config(&path);
+                Self::backup_broken_file(&path, "config");
                 DEFAULT_CONFIG_TEMPLATE.parse::<toml_edit::DocumentMut>().unwrap_or_default()
             }
         };
@@ -478,6 +540,16 @@ impl Config {
                 if let Some(t) = new_item.as_table_mut() { t.set_implicit(true); }
                 root.insert(key, new_item);
             }
+        }
+        let history_saved = match self.save_history() {
+            Ok(()) => true,
+            Err(e) => {
+                log_error(&e);
+                false
+            }
+        };
+        if history_saved || !has_history_colors(root) {
+            remove_history_colors(root);
         }
         if fs::write(&path, doc.to_string()).is_ok() {
             log_step("Config", &format!("Saved changes: {:?}", path));
@@ -575,6 +647,19 @@ fn update_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
     } else {
         *target = source.clone();
     }
+}
+
+fn remove_history_colors(root: &mut toml_edit::Table) {
+    if let Some(history) = root.get_mut("history").and_then(|item| item.as_table_mut()) {
+        history.remove("colors");
+    }
+}
+
+fn has_history_colors(root: &toml_edit::Table) -> bool {
+    root.get("history")
+        .and_then(|item| item.as_table())
+        .and_then(|history| history.get("colors"))
+        .is_some()
 }
 
 fn dirs_next() -> std::path::PathBuf {

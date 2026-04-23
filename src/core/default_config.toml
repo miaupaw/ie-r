@@ -96,11 +96,11 @@ hsv     = "{h}, {s}%, {v}%"
 cmyk    = "{c}%, {m}%, {y}%, {k}%"
 
 # Color history is shown in the system tray context menu.
-# Managed automatically — don't edit the colors array by hand.
+# Settings live here; picked colors themselves are stored separately in
+# ~/.local/state/ie-r/history.toml (or $XDG_STATE_HOME/ie-r/history.toml).
 [history]
 size = 10             # max colors to remember
 reverse_order = true  # newest first in tray menu
-colors = []
 
 # Global system integration settings.
 [system]
