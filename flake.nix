@@ -33,10 +33,10 @@
             libxkbcommon
             dbus
             fontconfig
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXrandr
-            xorg.libXi
+            libx11
+            libxcursor
+            libxrandr
+            libxi
         ];
 
         libclangPath = "${pkgs.llvmPackages.libclang.lib}/lib";
@@ -214,12 +214,12 @@
                     echo "🔦 Locating dlopen entry points (X11 + Wayland + Pipewire)..."
                     for lib in \
                         ${pkgs.wayland}/lib/libwayland-client.so.0 \
-                        ${pkgs.xorg.libX11}/lib/libX11.so.6 \
-                        ${pkgs.xorg.libX11}/lib/libX11-xcb.so.1 \
-                        ${pkgs.xorg.libXcursor}/lib/libXcursor.so.1 \
-                        ${pkgs.xorg.libXrandr}/lib/libXrandr.so.2 \
-                        ${pkgs.xorg.libXi}/lib/libXi.so.6 \
-                        ${pkgs.xorg.libXrender}/lib/libXrender.so.1 \
+                        ${pkgs.libx11}/lib/libX11.so.6 \
+                        ${pkgs.libx11}/lib/libX11-xcb.so.1 \
+                        ${pkgs.libxcursor}/lib/libXcursor.so.1 \
+                        ${pkgs.libxrandr}/lib/libXrandr.so.2 \
+                        ${pkgs.libxi}/lib/libXi.so.6 \
+                        ${pkgs.libxrender}/lib/libXrender.so.1 \
                         ${pkgs.libxkbcommon}/lib/libxkbcommon-x11.so.0 \
                         ${pkgs.pipewire}/lib/libpipewire-0.3.so.0; \
                     do
@@ -247,10 +247,10 @@
                     cp -R ${pkgs.xkeyboard_config}/share/X11/xkb/compat/*             $out/share/xkb/compat/
 
                     mkdir -p $out/share/X11/locale
-                    cp -R ${pkgs.xorg.libX11}/share/X11/locale/en_US.UTF-8 $out/share/X11/locale/
-                    cp -R ${pkgs.xorg.libX11}/share/X11/locale/compose.dir $out/share/X11/locale/
-                    cp -R ${pkgs.xorg.libX11}/share/X11/locale/locale.alias $out/share/X11/locale/
-                    cp -R ${pkgs.xorg.libX11}/share/X11/locale/locale.dir   $out/share/X11/locale/
+                    cp -R ${pkgs.libx11}/share/X11/locale/en_US.UTF-8 $out/share/X11/locale/
+                    cp -R ${pkgs.libx11}/share/X11/locale/compose.dir $out/share/X11/locale/
+                    cp -R ${pkgs.libx11}/share/X11/locale/locale.alias $out/share/X11/locale/
+                    cp -R ${pkgs.libx11}/share/X11/locale/locale.dir   $out/share/X11/locale/
 
                     mkdir -p $out/share/icons/hicolor/scalable/apps
                     mkdir -p $out/share/icons/hicolor/symbolic/apps
