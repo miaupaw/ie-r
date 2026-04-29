@@ -17,9 +17,12 @@ pub mod shapes;
 // Re-export shared rendering primitives for other core modules (e.g. About window)
 pub use glass::draw_frosted_rect;
 
-use crate::core::capture::{PhysicalCanvas, ScreenCapture};
+use crate::core::capture::PhysicalCanvas;
+#[cfg(unix)]
+use crate::core::capture::ScreenCapture;
 use crate::core::config::Config;
 use image::Rgba;
+#[cfg(unix)]
 use wayland_client::protocol::wl_output;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -88,6 +91,11 @@ pub struct OverlayApp {
 
     // --- Watchdog (auto-exit on inactivity) ---
     pub last_activity: Instant,
+
+    // Current monitor bounds in canvas-local coordinates (x, y, w, h).
+    // Used by magnifier for edge-reflection and clamping on multi-monitor setups.
+    // None = use canvas bounds (correct for Wayland per-output surfaces).
+    pub monitor_rect: Option<(i32, i32, i32, i32)>,
 }
 
 /// State for the final color-capture animation.
@@ -137,6 +145,7 @@ impl OverlayApp {
         canvas: PhysicalCanvas,
         mut config: Config,
         font_data: std::sync::Arc<Vec<u8>>,
+        hud_font_data: std::sync::Arc<Vec<u8>>,
         backend_name: String,
         scale_factor: f64,
     ) -> Self {
@@ -150,8 +159,8 @@ impl OverlayApp {
         }
 
         let magnifier_font_size = config.font.size;
-        let magnifier = magnifier::Magnifier::new(font_data.clone(), magnifier_font_size);
-        let hud = hud::Hud::new(font_data, scale_factor, config.hud.show);
+        let magnifier = magnifier::Magnifier::new(font_data, magnifier_font_size);
+        let hud = hud::Hud::new(hud_font_data, scale_factor, config.hud.show);
 
         let active = canvas.active();
         let buf_width = active.capture.width;
@@ -181,19 +190,22 @@ impl OverlayApp {
             repeat_tracker: None,
             blink: None,
             last_activity: Instant::now(),
+            monitor_rect: None,
         }
     }
 
     /// Convenience: create from single-monitor ScreenCapture (Portal / KWin fallback).
+    #[cfg(unix)]
     pub fn from_capture(
         capture: ScreenCapture,
         output: Option<wl_output::WlOutput>,
         config: Config,
         font_data: std::sync::Arc<Vec<u8>>,
+        hud_font_data: std::sync::Arc<Vec<u8>>,
         backend_name: String,
         scale_factor: f64,
     ) -> Self {
-        Self::new(PhysicalCanvas::from_single(capture, output), config, font_data, backend_name, scale_factor)
+        Self::new(PhysicalCanvas::from_single(capture, output), config, font_data, hud_font_data, backend_name, scale_factor)
     }
 
     /// Updates the physical mouse position from OS connectors.
@@ -816,6 +828,7 @@ impl OverlayApp {
                     dt,
                     flash_intensity: self.flash_intensity,
                     frame_color: border_color,
+                    monitor_rect: self.monitor_rect,
                 };
                 let (bounds, is_animating) = self.magnifier.render(
                     canvas, w, h, &ctx,

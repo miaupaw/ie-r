@@ -1,7 +1,14 @@
+#[cfg(unix)]
 pub mod dbus_menu;
+#[cfg(unix)]
 pub mod dbus_tray;
+#[cfg(windows)]
+pub mod about_win;
 pub mod event_sender;
+#[cfg(unix)]
 pub mod rofi_menu;
+#[cfg(windows)]
+pub mod tray_win;
 pub mod scout;
 pub mod timer;
 
@@ -20,5 +27,10 @@ pub enum UserEvent {
 
 /// Opens the homepage in the default browser.
 pub fn open_homepage() {
-    let _ = open::that("https://instant-eyedropper.com/linux/?ie-r");
+    #[cfg(unix)]
+    let url = "https://instant-eyedropper.com/linux/?ie-r";
+    #[cfg(windows)]
+    let url = "https://instant-eyedropper.com/?ie-r";
+
+    let _ = open::that(url);
 }

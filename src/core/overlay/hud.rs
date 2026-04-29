@@ -485,6 +485,9 @@ fn draw_base(
         ("SHFT + SCROLL", "ADJUST MAGNIFIER"),
         ("CTRL + SCROLL", "ADJUST CODE SIZE"),
         ("ALT + SCROLL", "ADJUST AIM FIELD"),
+        #[cfg(windows)]
+        (config.system.hotkey.as_str(), "DEFAULT HOTKEY"),
+        #[cfg(not(windows))]
         ("SIGUSR1 ie-r", "WAYLAND TRIGGER"),
         ("~", "HUD [ ON / OFF ]"),
     ];
@@ -571,7 +574,7 @@ fn draw_base(
         1, 0x0Affffff,
     );
 
-    let footer_text = "IE-R v0.1.0 // DIGITAL SENSOR";
+    let footer_text = "IE-R v0.1.1 // DIGITAL SENSOR";
     let footer_scale = 0.28;
     let footer_width = text_renderer.measure_text_width(footer_text) * footer_scale;
     text_renderer.draw_text_scaled(

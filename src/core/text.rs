@@ -198,6 +198,53 @@ impl TextRenderer {
     }
 }
 
+/// Loads JetBrains Mono Regular for HUD and About window.
+///
+/// Resolution order:
+///   1. `IE_R_FONT_DIR` env var (set by portable launcher)
+///   2. Relative to exe: `fonts/` (Windows portable), `../share/ie-r/fonts/` (Nix package)
+///   3. System fontdb — JetBrains Mono if installed
+///
+/// Returns empty Vec on failure; caller falls back to the magnifier font.
+pub fn load_hud_font(db: &Database) -> Vec<u8> {
+    const FILENAME: &str = "JetBrainsMono-Regular.ttf";
+
+    if let Ok(dir) = std::env::var("IE_R_FONT_DIR") {
+        let path = std::path::PathBuf::from(dir).join(FILENAME);
+        if let Ok(data) = fs::read(&path) {
+            log_step("Font", &format!("HUD font from IE_R_FONT_DIR: {}", path.display()));
+            return data;
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidates = [
+                dir.join("fonts").join(FILENAME),
+                dir.join("..").join("share").join("ie-r").join("fonts").join(FILENAME),
+            ];
+            for path in &candidates {
+                if let Ok(data) = fs::read(path) {
+                    log_step("Font", &format!("HUD font: {}", path.display()));
+                    return data;
+                }
+            }
+        }
+    }
+
+    let query = Query { families: &[Family::Name("JetBrains Mono")], ..Default::default() };
+    if let Some(id) = db.query(&query) {
+        if let Some((Source::File(path), _)) = db.face_source(id) {
+            if let Ok(data) = fs::read(path) {
+                log_step("Font", "HUD font: JetBrains Mono from system fonts");
+                return data;
+            }
+        }
+    }
+
+    Vec::new()
+}
+
 /// Smart font hunter.
 /// Scans the system once and finds the best monospace font from the provided list.
 pub fn find_best_font(db: &Database, preferred: &str, elite_list: &[&str]) -> Vec<u8> {

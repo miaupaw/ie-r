@@ -384,6 +384,7 @@ impl X11DaemonApp {
                 None, // No wl_output on X11
                 self.svc.config.clone(),
                 self.svc.cached_font_data.clone(),
+                self.svc.hud_font_data.clone(),
                 "COMPOSITOR: X11".to_string(),
                 scale_factor,
             );

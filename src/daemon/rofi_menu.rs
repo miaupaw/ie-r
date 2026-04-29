@@ -3,13 +3,13 @@
 /// On KDE/GNOME the tray host renders dbusmenu popups natively.
 /// On wlroots (Hyprland, Sway, niri, river…) GTK3 can't spawn a popup
 /// from a layer-shell surface, so we launch an external menu instead.
+///
+/// Supports any dmenu-compatible tool via `menu_command` in config.
+/// If unset, auto-detects: rofi → wofi → fuzzel.
 
 use super::UserEvent;
 use super::event_sender::EventSender;
-use crate::core::config::Config;
-use crate::core::config::TEMPLATE_LABELS;
 use crate::core::terminal::log_error;
-use crate::daemon::dbus_menu::MenuSnapshot;
 
 /// Desktop environments known to render dbusmenu popups natively.
 /// Everything else gets the external menu fallback.
@@ -64,6 +64,7 @@ impl MenuEntry {
     }
 }
 
+/// Returns launchers to try: custom command from config, or the default auto-detect chain.
 fn resolve_launchers(menu_command: Option<&[String]>) -> Result<Vec<LauncherSpec>, String> {
     if let Some(command) = menu_command {
         if command.is_empty() {
@@ -111,7 +112,8 @@ fn resolve_launchers(menu_command: Option<&[String]>) -> Result<Vec<LauncherSpec
     ])
 }
 
-fn build_menu_entries(snap: &MenuSnapshot) -> Vec<MenuEntry> {
+fn build_menu_entries(snap: &crate::daemon::dbus_menu::MenuSnapshot) -> Vec<MenuEntry> {
+    use crate::core::config::TEMPLATE_LABELS;
     let mut entries = Vec::new();
 
     let color_icon_dir = std::path::PathBuf::from("/tmp/ie-r-colors");
@@ -124,7 +126,6 @@ fn build_menu_entries(snap: &MenuSnapshot) -> Vec<MenuEntry> {
             let png = crate::daemon::dbus_menu::generate_color_png(hex);
             let _ = std::fs::write(&icon_path, &png);
         }
-
         entries.push(MenuEntry {
             label: hex.clone(),
             rofi_line: Some(format!("{}\0icon\x1f{}", hex, icon_path.display())),
@@ -147,26 +148,10 @@ fn build_menu_entries(snap: &MenuSnapshot) -> Vec<MenuEntry> {
         rofi_line: None,
         action: Action::ToggleHUD,
     });
-    entries.push(MenuEntry {
-        label: "⚙ Edit Config".to_string(),
-        rofi_line: None,
-        action: Action::EditConfig,
-    });
-    entries.push(MenuEntry {
-        label: "🌐 Homepage".to_string(),
-        rofi_line: None,
-        action: Action::Homepage,
-    });
-    entries.push(MenuEntry {
-        label: "ℹ About".to_string(),
-        rofi_line: None,
-        action: Action::About,
-    });
-    entries.push(MenuEntry {
-        label: "✕ Quit".to_string(),
-        rofi_line: None,
-        action: Action::Quit,
-    });
+    entries.push(MenuEntry { label: "⚙ Edit Config".to_string(), rofi_line: None, action: Action::EditConfig });
+    entries.push(MenuEntry { label: "🌐 Homepage".to_string(),   rofi_line: None, action: Action::Homepage });
+    entries.push(MenuEntry { label: "ℹ About".to_string(),       rofi_line: None, action: Action::About });
+    entries.push(MenuEntry { label: "✕ Quit".to_string(),        rofi_line: None, action: Action::Quit });
 
     entries
 }
@@ -181,6 +166,7 @@ fn resolve_action(selection: &str, entries: &[MenuEntry]) -> Option<Action> {
         return None;
     }
 
+    // Index-based fallback (some launchers may return a number)
     if let Ok(idx) = normalized.parse::<usize>() {
         return entries.get(idx).map(|entry| entry.action.clone());
     }
@@ -202,11 +188,12 @@ fn dispatch_action(proxy: &EventSender, action: Action) {
 
 /// Show the context menu via an external launcher (custom command or rofi → wofi → fuzzel).
 pub async fn show_menu(proxy: EventSender) {
+    use crate::daemon::dbus_menu::MenuSnapshot;
     use tokio::io::AsyncWriteExt;
 
     let snap = MenuSnapshot::take();
     let entries = build_menu_entries(&snap);
-    let menu_command = Config::read_menu_command_from_disk().unwrap_or(snap.menu_command);
+    let menu_command = crate::core::config::Config::read_menu_command_from_disk().unwrap_or(snap.menu_command);
     let launchers = match resolve_launchers(menu_command.as_deref()) {
         Ok(launchers) => launchers,
         Err(err) => {

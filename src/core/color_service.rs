@@ -18,19 +18,23 @@ use crate::daemon::timer::Perf;
 pub struct ColorService {
     pub config: Config,
     clipboard: Option<Clipboard>,
+    #[cfg(unix)]
     pub dbus_conn: Option<zbus::blocking::Connection>,
 
     // --- Font Management ---
     font_db: fontdb::Database,
     cached_font_family: String,
     pub cached_font_data: std::sync::Arc<Vec<u8>>,
+    pub hud_font_data: std::sync::Arc<Vec<u8>>,
 }
 
 impl ColorService {
     pub fn new() -> Self {
         let config = Config::load(false);
+        #[cfg(unix)]
         crate::daemon::dbus_menu::DBusMenu::prime_layout_state(&config);
         let clipboard = Clipboard::new().ok();
+        #[cfg(unix)]
         let dbus_conn = zbus::blocking::Connection::session().ok();
 
         // Font database is initialized once at daemon startup.
@@ -39,16 +43,20 @@ impl ColorService {
         font_db.load_system_fonts();
         perf.log("System fonts loaded into DB");
 
-        let font_data = text::find_best_font(&font_db, &config.font.family, ELITE_FONTS);
+        let font_data = std::sync::Arc::new(text::find_best_font(&font_db, &config.font.family, ELITE_FONTS));
+        let raw_hud = text::load_hud_font(&font_db);
+        let hud_font_data = if raw_hud.is_empty() { font_data.clone() } else { std::sync::Arc::new(raw_hud) };
 
         let cached_font_family = config.font.family.clone();
         Self {
             config,
             clipboard,
+            #[cfg(unix)]
             dbus_conn,
             font_db,
             cached_font_family,
-            cached_font_data: std::sync::Arc::new(font_data),
+            cached_font_data: font_data,
+            hud_font_data,
         }
     }
 
@@ -64,6 +72,7 @@ impl ColorService {
 
         self.config = Config::load(true);
         log_info("Configuration hot-reloaded");
+        #[cfg(unix)]
         crate::daemon::dbus_menu::DBusMenu::notify_layout_update(&self.config);
         perf.log("Config loaded");
 
@@ -135,7 +144,7 @@ impl ColorService {
     /// Four steps (always in this order):
     ///   1. Sync   — merge changed fields from overlay_config back into self.config
     ///   2. Copy   — if colors picked: clipboard + history; otherwise log "cancelled"
-    ///   3. Save   — coordinated persistence: config.toml + history.toml
+    ///   3. Save   — single disk write: config + history together
     ///   4. Notify — update tray menu from the already-current self.config
     pub fn finalize_overlay(&mut self, overlay_config: &crate::core::config::Config, color_deck: Vec<image::Rgba<u8>>) {
         //    Sync: optics/HUD/format settings from overlay → daemon config
@@ -153,11 +162,12 @@ impl ColorService {
             log_info("Selection cancelled.");
         }
 
-        //    Save: persist settings and history to their respective files
+        //    Save: single disk write (settings + history)
         self.config.save();
         log_success("Saved", "Configuration and history updated");
 
         //    Notify: update tray menu — data is already current in self.config
+        #[cfg(unix)]
         crate::daemon::dbus_menu::DBusMenu::notify_layout_update(&self.config);
     }
 

@@ -11,7 +11,7 @@ use crate::core::terminal::log_step;
 const MENU_OBJECT_PATH: &str = "/MenuBar";
 
 // ID ranges:
-//   1        = "Instant Eyedropper" (launch)
+//   1        = "Pick Color" (launch)
 //   10       = "Edit Config"
 //   11       = "Quit"
 //   12       = "Toggle HUD"
@@ -97,7 +97,7 @@ pub struct DBusMenu {
 
 #[interface(name = "com.canonical.dbusmenu")]
 impl DBusMenu {
-    //   [Instant Eyedropper]
+    //   [Pick Color]
     //   --- separator ---
     //   --- separator ---
     //   --- separator ---
@@ -126,9 +126,9 @@ impl DBusMenu {
         let snap = MenuSnapshot::take();
         let mut children = Vec::new();
 
-        // Item 1: "Instant Eyedropper"
+        // Item 1: "Pick Color"
         let mut item1_props: HashMap<String, Value> = HashMap::new();
-        item1_props.insert("label".to_string(), Value::from("Instant Eyedropper"));
+        item1_props.insert("label".to_string(), Value::from("Pick Color"));
         item1_props.insert("enabled".to_string(), Value::from(true));
         item1_props.insert("visible".to_string(), Value::from(true));
         item1_props.insert("icon-name".to_string(), Value::from("ie-r"));
@@ -342,18 +342,15 @@ impl DBusMenu {
 }
 
 impl DBusMenu {
-    fn sync_state(config: &crate::core::config::Config) {
-        let mut state = MENU_STATE.write().unwrap();
-        state.history = config.history.colors.clone();
-        state.reverse_order = config.history.reverse_order;
-        state.menu_command = config.system.menu_command.clone();
-        state.selected_template = config.templates.selected.clone();
-        state.show_hud = config.hud.show;
-    }
-
     pub fn new(proxy: EventSender) -> Self {
         let config = crate::core::config::Config::load(true);
-        Self::sync_state(&config);
+        {
+            let mut state = MENU_STATE.write().unwrap();
+            state.history = config.history.colors;
+            state.reverse_order = config.history.reverse_order;
+            state.selected_template = config.templates.selected.clone();
+            state.show_hud = config.hud.show;
+        }
 
         Self {
             proxy,
@@ -363,6 +360,19 @@ impl DBusMenu {
 
     pub fn path() -> &'static str {
         MENU_OBJECT_PATH
+    }
+
+    fn sync_state(config: &crate::core::config::Config) {
+        let mut state = MENU_STATE.write().unwrap();
+        state.history = config.history.colors.clone();
+        state.reverse_order = config.history.reverse_order;
+        state.menu_command = config.system.menu_command.clone();
+        state.selected_template = config.templates.selected.clone();
+        state.show_hud = config.hud.show;
+    }
+
+    pub fn prime_layout_state(config: &crate::core::config::Config) {
+        Self::sync_state(config);
     }
 
     /// Updates menu state from an already-loaded config and notifies the taskbar.
@@ -383,10 +393,6 @@ impl DBusMenu {
             }
         }
         Self::emit_layout_signal();
-    }
-
-    pub fn prime_layout_state(config: &crate::core::config::Config) {
-        Self::sync_state(config);
     }
 
     /// Updates only the selected template (without touching history).

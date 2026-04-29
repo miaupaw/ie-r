@@ -25,7 +25,7 @@ frame       = "#3D367E" # outer frame border
 aim         = "#FF3B3B" # crosshair targeting the center pixel
 grid        = "#000000" # grid lines between zoomed pixels (visible at high zoom)
 foreground  = "#8DFF9A" # color code text
-background  = "#050523" # frosted glass tint behind the text box
+background  = "#070021" # frosted glass tint behind the text box
 
 # The HUD is a translucent help panel that slides in from the right edge.
 # It shows keybindings, current format, and capture backend info.
@@ -42,7 +42,7 @@ scanlines_intensity = 0.1 # CRT scanline overlay strength (0.0 - 1.0)
 # Leading zeros (e.g. "003" vs "255") can be dimmed to reduce visual noise.
 [font]
 family = "JetBrainsMono Nerd Font"
-size = 58.0           # base font size in the overlay (px)
+size = 48.0           # base font size in the overlay (px)
 dim_zeros = 0.2       # opacity of leading zeros (0.0 = invisible, 1.0 = full)
 padding_left = "  "   # decorative padding before text
 padding_right = "  "  # decorative padding after text
@@ -54,8 +54,8 @@ padding_right = "  "  # decorative padding after text
 [physics]
 blur_radius = 14          # box blur radius for the frosted glass effect
 glass_opacity = 0.55      # 0.0 = fully transparent, 1.0 = solid background color
-stiffness = 800.0         # spring stiffness (higher = snappier response)
-damping = 35.0            # spring damping (higher = less overshoot)
+stiffness = 1000.0        # spring stiffness (higher = snappier response)
+damping = 45.0            # spring damping (higher = less overshoot)
 pop_effect = 2.0          # spawn animation: 0.0 = instant, <1.0 = slower, 1.0 = standard, >1.0 = snappier
 blink_effect = "converge" # final pick animation: "none" | "converge"
 
@@ -96,7 +96,7 @@ hsv     = "{h}, {s}%, {v}%"
 cmyk    = "{c}%, {m}%, {y}%, {k}%"
 
 # Color history is shown in the system tray context menu.
-# Settings live here; picked colors themselves are stored separately in
+# Settings live here; picked colors are stored separately in
 # ~/.local/state/ie-r/history.toml (or $XDG_STATE_HOME/ie-r/history.toml).
 [history]
 size = 10             # max colors to remember
@@ -118,18 +118,51 @@ tray_icon = "color"
 # Set to 0 to disable. (default: 60)
 auto_cancel = 60
 
-# Optional external menu override for wlroots/Wayland popup fallback.
-# Format: TOML string array, where the first item is the executable and the rest are args.
+# External menu program for wlroots compositors (Hyprland, Sway, niri…).
+# Format: TOML array — first element is the executable, rest are arguments.
+# If unset, auto-detects: rofi → wofi → fuzzel.
 # Example: menu_command = ["dmenu", "-i", "-p", "IE-R"]
-# No shell parsing or environment expansion is performed here.
-# Leave unset to auto-detect: rofi -> wofi -> fuzzel.
-# menu_command = ["dmenu", "-i", "-p", "IE-R"]
+# menu_command = ["rofi", "-dmenu", "-p", "IE-R"]
 
-# --- X11 Environments ONLY ---
-# Under X11, the daemon actively polls the keyboard for this hotkey.
-# Format: "Modifiers+Key" (e.g. "Alt+Shift+C", "Control+Alt+P").
-hotkey = "Alt+Shift+C"
-poll_interval_ms = 50  # 50ms = 20Hz polling rate for X11 hotkey detection.
+# Show a welcome balloon tip on Windows when the app starts for the first time
+# or when re-launched. (Windows only)
+welcome_balloon = true
+
+# Global hotkey — works on X11 and Windows.
+# On Wayland, use system-level shortcuts instead — see the Wayland section below.
+#
+# Format: "Modifier(s)+Key"
+#
+# Modifiers (case-insensitive, any combination):
+#   Alt      — Alt / Option
+#   Shift    — Shift
+#   Ctrl     — Control
+#   Super    — Win key (Windows) / Super (Linux) / Cmd (Mac)
+#
+# Key — physical key (no Shift!):
+#   Letters & digits:  A–Z, 0–9
+#   F-keys:            F1–F24
+#   Arrows:            Up, Down, Left, Right
+#   Punctuation:       , . / ; ' [ ] \ = - ` (use the symbol itself)
+#                      or by name: Comma, Slash, Backquote, etc.
+#   Other:             Space, Tab, Enter, Esc, Backspace,
+#                      Delete, Home, End, PageUp, PageDown,
+#                      Insert, PrintScreen, ScrollLock
+#   Numpad:            Num0–Num9, NumAdd, NumSubtract,
+#                      NumMultiply, NumDivide, NumEnter
+#   Media:             VolumeUp, VolumeDown, VolumeMute,
+#                      MediaPlay, MediaPause, MediaStop,
+#                      MediaTrackNext, MediaTrackPrev
+#
+# Note: ~ is Shift+`, so use ` not ~.
+# Shifted symbols (!@#$%...) are not supported.
+#
+# Examples:
+#   "Alt+Shift+X"       — default
+#   "Super+Shift+P"     — Win+Shift+P
+#   "Ctrl+`"            — Ctrl+backtick
+hotkey = "Alt+Shift+X"
+poll_interval_ms = 50  # X11 only: hotkey event queue poll interval (ms).
 
 # --- Wayland Environments (Hyprland, Plasma, Sway, GNOME) ---
 # Wayland's security model blocks active keyboard polling.

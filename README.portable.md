@@ -50,19 +50,19 @@ bind = ALT SHIFT, H, exec, pkill -SIGUSR2 ie-r
 
 **Sway** (`~/.config/sway/config`):
 ```
-bindsym Alt+Shift+c exec pkill -SIGUSR1 ie-r
+bindsym Alt+Shift+x exec pkill -SIGUSR1 ie-r
 bindsym Alt+Shift+h exec pkill -SIGUSR2 ie-r
 ```
 
 **KDE Plasma:** System Settings → Shortcuts → Custom Shortcuts → Add new → Command/URL.
 
-> On X11, IE-R also supports a built-in hotkey (default `Alt+Shift+C`), configurable in `~/.config/ie-r/config.toml`.
+> On X11, IE-R also supports a built-in hotkey (default `Alt+Shift+X`), configurable in `~/.config/ie-r/config.toml`.
 
 ---
 
 ## Configuration
 
-Settings live in `~/.config/ie-r/config.toml`. Picked color history lives in `~/.local/state/ie-r/history.toml`. Files are created as needed on first run, and IE-R preserves your comments when updating the config.
+All settings live in `~/.config/ie-r/config.toml`. Created with defaults on first run. IE-R preserves your comments when updating the config.
 
 ---
 

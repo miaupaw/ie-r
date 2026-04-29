@@ -1,12 +1,20 @@
+#[cfg(unix)]
 pub mod kwin;
+#[cfg(unix)]
 pub mod portal;
+#[cfg(unix)]
 pub mod wlr;
+#[cfg(windows)]
+pub mod windows;
 
 // Re-export for X11 connector and backwards compatibility.
+#[cfg(unix)]
 pub use portal::capture_screen;
 
 use anyhow::Result;
+#[cfg(unix)]
 use crate::core::terminal::log_warn;
+#[cfg(unix)]
 use wayland_client::protocol::wl_output;
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -18,7 +26,7 @@ use wayland_client::protocol::wl_output;
 //                  overlay/render/input regardless of capture method.
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// Screenshot data ready for Wayland SHM (XRGB8888)
+/// Screenshot data ready for SHM/HBITMAP (XRGB8888)
 pub struct ScreenCapture {
     pub xrgb_buffer: Vec<u32>,
     pub width: u32,
@@ -27,28 +35,30 @@ pub struct ScreenCapture {
 
 pub struct MonitorTile {
     pub capture: ScreenCapture,
-    /// SCTK Output handle (optional for Portal/X11 fallbacks)
-    pub output: Option<wl_output::WlOutput>,
+    /// Platform-specific output handle (WlOutput on Unix, unused on Windows for now)
+    #[cfg(unix)]
+    pub output: Option<wayland_client::protocol::wl_output::WlOutput>,
     /// Fractional scale factor (e.g. 1.0, 1.5, 2.0).
     /// Used to translate pointer events (logical) → world coordinates.
     pub scale: f64,
     /// Logical position of this monitor in compositor space.
     pub logical_pos: (i32, i32),
+    #[cfg(unix)]
     pub transform: wl_output::Transform,
 }
 
 impl MonitorTile {
     /// Construct a tile from capture + output metadata.
     /// Scale = capture_width / logical_width (fractional scaling).
+    #[cfg(unix)]
     pub fn from_capture(
         capture: ScreenCapture,
-        output: wl_output::WlOutput,
+        output: wayland_client::protocol::wl_output::WlOutput,
         logical_pos: (i32, i32),
         logical_w: i32,
         transform: wl_output::Transform,
     ) -> Self {
         let capture = apply_transform(capture, transform);
-
         let scale = if logical_w > 0 {
             capture.width as f64 / logical_w as f64
         } else {
@@ -75,17 +85,20 @@ impl PhysicalCanvas {
     }
 
     /// Tile index by wl_output. O(N), N = number of monitors (1–4).
-    pub fn find_tile(&self, output: &wl_output::WlOutput) -> Option<usize> {
+    #[cfg(unix)]
+    pub fn find_tile(&self, output: &wayland_client::protocol::wl_output::WlOutput) -> Option<usize> {
         self.tiles.iter().position(|t| t.output.as_ref() == Some(output))
     }
 
     /// Like find_tile, but falls back to 0 (for input — cursor is always on some monitor).
-    pub fn tile_index_for(&self, output: &wl_output::WlOutput) -> usize {
+    #[cfg(unix)]
+    pub fn tile_index_for(&self, output: &wayland_client::protocol::wl_output::WlOutput) -> usize {
         self.find_tile(output).unwrap_or(0)
     }
 
     /// Create a canvas from a single full-desktop capture (Portal, X11, KWin).
-    pub fn from_single(capture: ScreenCapture, output: Option<wl_output::WlOutput>) -> Self {
+    #[cfg(unix)]
+    pub fn from_single(capture: ScreenCapture, output: Option<wayland_client::protocol::wl_output::WlOutput>) -> Self {
         Self {
             tiles: vec![MonitorTile {
                 capture,
@@ -93,6 +106,19 @@ impl PhysicalCanvas {
                 scale: 1.0,
                 logical_pos: (0, 0),
                 transform: wl_output::Transform::Normal,
+            }],
+            active_idx: 0,
+        }
+    }
+
+    /// Create a canvas from a single full-desktop capture (Windows / headless).
+    #[cfg(windows)]
+    pub fn from_single(capture: ScreenCapture) -> Self {
+        Self {
+            tiles: vec![MonitorTile {
+                capture,
+                scale: 1.0,
+                logical_pos: (0, 0),
             }],
             active_idx: 0,
         }
@@ -173,6 +199,7 @@ impl PhysicalCanvas {
     }
 }
 
+#[cfg(unix)]
 fn apply_transform(capture: ScreenCapture, transform: wl_output::Transform) -> ScreenCapture {
     let src_w = capture.width as usize;
     let src_h = capture.height as usize;
@@ -264,6 +291,7 @@ fn apply_transform(capture: ScreenCapture, transform: wl_output::Transform) -> S
 }
 
 /// Convert decoded RGBA image to XRGB u32 buffer
+#[cfg(unix)]
 pub(crate) fn rgba_to_capture(img: &image::RgbaImage) -> ScreenCapture {
     let (w, h) = img.dimensions();
     let raw = img.as_raw();
@@ -280,20 +308,12 @@ pub(crate) fn rgba_to_capture(img: &image::RgbaImage) -> ScreenCapture {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tier cascade — single entry point for capturing all monitors.
-//
-// Protocol hierarchy:
-//   Tier 1: WLR Screencopy (Hyprland/Sway) — per-output, parallel across threads.
-//   Tier 2: KWin ScreenShot2 DBus per-output — CaptureScreen(name), sequential.
-//   Tier 3: KWin single / XDG Portal / Spectacle — single-tile fallback.
-//
-// Tiers 1 and 2 produce Vec<MonitorTile> → PhysicalCanvas::build().
-// Downstream (overlay, render, input) does not know which tier ran.
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// Output metadata pre-collected on the main thread (OutputState is !Send).
+#[cfg(unix)]
 pub struct OutputMeta {
-    pub output: wl_output::WlOutput,
+    pub output: wayland_client::protocol::wl_output::WlOutput,
     pub name: String,
     pub logical_pos: (i32, i32),
     pub logical_w: i32,
@@ -301,6 +321,7 @@ pub struct OutputMeta {
 }
 
 /// Capture all monitors, selecting the best available protocol.
+#[cfg(unix)]
 pub fn capture_all_outputs(
     output_meta: &[OutputMeta],
     screencopy: Option<(&wayland_client::Connection, &wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, &wayland_client::protocol::wl_shm::WlShm)>,
@@ -367,4 +388,28 @@ pub fn capture_all_outputs(
     let capture = portal::capture_screen(dbus_conn)?;
     let output = output_meta.first().map(|m| m.output.clone());
     Ok(PhysicalCanvas::from_single(capture, output))
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Windows capture — DXGI Desktop Duplication / GDI BitBlt (Phase 1).
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Capture all monitors: GDI BitBlt (Tier 1) → DXGI Desktop Duplication (Tier 2).
+///
+/// GDI first: reliable on all Windows versions including 8.1 VMs.
+/// DXGI has cold-start issues (black frame without prior compositor activity)
+/// and higher latency with warm-up (~90ms). GDI BitBlt is ~30ms and always works.
+/// TODO: revisit tier order after real-hardware testing (DXGI may be faster there).
+#[cfg(windows)]
+pub fn capture_all_outputs() -> Result<PhysicalCanvas> {
+    use crate::core::terminal::log_warn;
+
+    // Tier 1: GDI BitBlt (~30ms, reliable, single virtual screen)
+    match windows::capture_gdi() {
+        Ok(canvas) => return Ok(canvas),
+        Err(e) => log_warn(&format!("GDI failed, falling back to DXGI: {}", e)),
+    }
+
+    // Tier 2: DXGI Desktop Duplication (may return black on cold start)
+    windows::capture_dxgi()
 }

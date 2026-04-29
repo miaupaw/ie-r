@@ -11,6 +11,11 @@ use crate::core::terminal::{log_step, log_warn, log_error};
 // ==============================================================================
 const DEFAULT_CONFIG_TEMPLATE: &str = include_str!("default_config.toml");
 
+// Windows ships a different default hotkey — Alt+Backquote is free there,
+// while on Linux it conflicts with KDE's window-switching shortcut.
+#[cfg(windows)]
+const DEFAULT_HOTKEY_WINDOWS: &str = "Alt+Shift+X";
+
 /// Static default config instance for internal use (serde/defaults).
 /// Parsed exactly once on first access.
 static DEFAULT_INSTANCE: LazyLock<Config> = LazyLock::new(|| {
@@ -39,6 +44,10 @@ pub const ELITE_FONTS: &[&str] = &[
     "Ubuntu Mono",
     "DejaVu Sans Mono",
     "Liberation Mono",
+    // Windows
+    "Consolas",
+    "Lucida Console",
+    "Courier New",
 ];
 
 // Font scale modifiers per format (visual density alignment).
@@ -88,6 +97,17 @@ pub fn transform_template_for_display(template: &str) -> String {
         .replace("{long}", "{long_pad}");
     t
 }
+
+/// Default color history shown on first run.
+pub const DEFAULT_HISTORY_COLORS: &[&str] = &[
+    "#E2B167",
+    "#F9778F",
+    "#BD9BF9",
+    "#6E8CD3",
+    "#7DCFFF",
+    "#00F3FF",
+    "#00FF88",
+];
 
 /// Display labels for the tray menu and HUD.
 pub const TEMPLATE_LABELS: &[(&str, &str)] = &[
@@ -279,14 +299,17 @@ impl Default for TrayIcon {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemConfig {
+    #[serde(default)]
+    pub tray_icon: TrayIcon,
+    #[serde(default = "default_auto_cancel")]
+    pub auto_cancel: u64,
+    #[cfg(windows)]
+    #[serde(default = "default_welcome_balloon")]
+    pub welcome_balloon: bool,
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
     #[serde(default = "default_poll_interval_ms")]
     pub poll_interval_ms: u64,
-    #[serde(default = "default_auto_cancel")]
-    pub auto_cancel: u64,
-    #[serde(default)]
-    pub tray_icon: TrayIcon,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub menu_command: Option<Vec<String>>,
 }
@@ -368,10 +391,19 @@ fn default_tpl_long() -> String { DEFAULT_INSTANCE.templates.copy.long.clone() }
 fn default_line_spacing() -> f32 { DEFAULT_INSTANCE.templates.show.line_spacing }
 fn default_history_size() -> usize { DEFAULT_INSTANCE.history.size }
 fn default_history_reverse() -> bool { DEFAULT_INSTANCE.history.reverse_order }
-fn default_history_colors() -> Vec<String> { Vec::new() }
-fn default_hotkey() -> String { DEFAULT_INSTANCE.system.hotkey.clone() }
+fn default_history_colors() -> Vec<String> {
+    DEFAULT_HISTORY_COLORS.iter().map(|s| s.to_string()).collect()
+}
+fn default_hotkey() -> String {
+    #[cfg(windows)]
+    return DEFAULT_HOTKEY_WINDOWS.to_string();
+    #[cfg(not(windows))]
+    DEFAULT_INSTANCE.system.hotkey.clone()
+}
 fn default_poll_interval_ms() -> u64 { DEFAULT_INSTANCE.system.poll_interval_ms }
 fn default_auto_cancel() -> u64 { DEFAULT_INSTANCE.system.auto_cancel }
+#[cfg(windows)]
+fn default_welcome_balloon() -> bool { DEFAULT_INSTANCE.system.welcome_balloon }
 // TrayIcon uses #[serde(default)] → TrayIcon::default() → Color
 
 // ==============================================================================
@@ -380,40 +412,47 @@ fn default_auto_cancel() -> u64 { DEFAULT_INSTANCE.system.auto_cancel }
 
 impl Config {
     pub fn get_config_path() -> std::path::PathBuf {
-        let base = std::env::var("XDG_CONFIG_HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| dirs_next().join(".config"));
-        base.join("ie-r").join("config.toml")
-    }
-
-    pub fn get_history_path() -> std::path::PathBuf {
-        let base = std::env::var("XDG_STATE_HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| dirs_next().join(".local").join("state"));
-        base.join("ie-r").join("history.toml")
-    }
-
-    fn parse_menu_command_from_str(content: &str) -> Option<Option<Vec<String>>> {
-        let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
-        let item = doc.get("system").and_then(|system| system.get("menu_command"));
-
-        match item {
-            Some(item) if item.is_none() => Some(None),
-            Some(item) => {
-                let arr = item.as_array()?;
-                let mut command = Vec::with_capacity(arr.len());
-                for value in arr.iter() {
-                    command.push(value.as_str()?.to_string());
-                }
-                Some(Some(command))
-            }
-            None => Some(None),
+        #[cfg(windows)]
+        { Self::get_config_path_windows() }
+        #[cfg(not(windows))]
+        {
+            let base = std::env::var("XDG_CONFIG_HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| dirs_next().join(".config"));
+            base.join("ie-r").join("config.toml")
         }
     }
 
-    pub fn read_menu_command_from_disk() -> Option<Option<Vec<String>>> {
-        let content = fs::read_to_string(Self::get_config_path()).ok()?;
-        Self::parse_menu_command_from_str(&content)
+    /// Windows config path resolution (three-tier fallback):
+    /// 1. Next to exe — portable install, existing config takes priority
+    /// 2. HOME/.config/ie-r/ — current behavior, respects user-set HOME
+    /// 3. %APPDATA%\ie-r\ — standard Windows user data location
+    #[cfg(windows)]
+    fn get_config_path_windows() -> std::path::PathBuf {
+        // Tier 1: portable — next to exe
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                let portable = exe_dir.join("config.toml");
+                if portable.exists() || is_dir_writable(exe_dir) {
+                    return portable;
+                }
+            }
+        }
+
+        // Tier 2: HOME (current behavior)
+        if let Ok(home) = std::env::var("HOME") {
+            return std::path::PathBuf::from(home)
+                .join(".config").join("ie-r").join("config.toml");
+        }
+
+        // Tier 3: standard Windows AppData\Roaming
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return std::path::PathBuf::from(appdata)
+                .join("ie-r").join("config.toml");
+        }
+
+        // Last resort: current dir
+        std::path::PathBuf::from("config.toml")
     }
 
     fn backup_broken_file(path: &std::path::Path, prefix: &str) {
@@ -432,6 +471,40 @@ impl Config {
             }
             log_error(&format!("Too many broken {} files! Backup skipped.", prefix));
         }
+    }
+
+    pub fn get_history_path() -> std::path::PathBuf {
+        #[cfg(windows)]
+        { Self::get_config_path().with_file_name("history.toml") }
+        #[cfg(not(windows))]
+        {
+            let base = std::env::var("XDG_STATE_HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| dirs_next().join(".local").join("state"));
+            base.join("ie-r").join("history.toml")
+        }
+    }
+
+    fn parse_menu_command_from_str(content: &str) -> Option<Option<Vec<String>>> {
+        let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+        let item = doc.get("system").and_then(|system| system.get("menu_command"));
+        match item {
+            Some(item) if item.is_none() => Some(None),
+            Some(item) => {
+                let arr = item.as_array()?;
+                let mut command = Vec::with_capacity(arr.len());
+                for value in arr.iter() {
+                    command.push(value.as_str()?.to_string());
+                }
+                Some(Some(command))
+            }
+            None => Some(None),
+        }
+    }
+
+    pub fn read_menu_command_from_disk() -> Option<Option<Vec<String>>> {
+        let content = fs::read_to_string(Self::get_config_path()).ok()?;
+        Self::parse_menu_command_from_str(&content)
     }
 
     fn load_history_colors(path: &std::path::Path, legacy_colors: Vec<String>) -> Vec<String> {
@@ -460,13 +533,11 @@ impl Config {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Error creating history directory {:?}: {}", parent, e))?;
         }
-
-        let persisted = PersistedHistory {
-            colors: self.history.colors.clone(),
-        };
-
-        let toml = toml_edit::ser::to_string(&persisted)
-            .map_err(|e| format!("Error serializing {:?}: {}", path, e))?;
+        let mut toml = String::from("colors = [\n");
+        for color in &self.history.colors {
+            toml.push_str(&format!("    \"{}\",\n", color));
+        }
+        toml.push_str("]\n");
         fs::write(&path, toml)
             .map_err(|e| format!("Error writing {:?}: {}", path, e))?;
         log_step("Config", &format!("Saved history: {:?}", path));
@@ -481,13 +552,13 @@ impl Config {
             match toml_edit::de::from_str::<Config>(&content) {
                 Ok(mut config) => {
                     loaded_from_config = true;
-                    if !silent { log_step("Config", &format!("Target confirmed: {:?}", path)); }
+                    if !silent { log_step("Config", &format!("Target confirmed: {}", path.display())); }
                     let legacy_colors = config.history.colors.clone();
                     config.history.colors = Self::load_history_colors(&Self::get_history_path(), legacy_colors);
                     config
                 }
                 Err(e) => {
-                    log_error(&format!("Error parsing {:?}: {}", path, e));
+                    log_error(&format!("Error parsing {}: {}", path.display(), e));
                     Self::backup_broken_file(&path, "config");
                     log_warn("Falling back to defaults. Backup created.");
                     let _ = fs::write(&path, DEFAULT_CONFIG_TEMPLATE);
@@ -496,9 +567,20 @@ impl Config {
             }
         } else {
             if let Some(parent) = path.parent() { let _ = fs::create_dir_all(parent); }
-            let _ = fs::write(&path, DEFAULT_CONFIG_TEMPLATE);
-            log_step("Config", &format!("Initialized new config from template: {:?}", path));
-            Self::default()
+            #[allow(unused_mut)]
+            let mut template = DEFAULT_CONFIG_TEMPLATE.to_string();
+            #[cfg(windows)]
+            { template = template.replace(
+                &format!(r#"hotkey = "{}""#, DEFAULT_INSTANCE.system.hotkey),
+                &format!(r#"hotkey = "{}""#, DEFAULT_HOTKEY_WINDOWS),
+            ); }
+            let _ = fs::write(&path, template);
+            log_step("Config", &format!("Initialized new config from template: {}", path.display()));
+            #[allow(unused_mut)]
+            let mut config = Self::default();
+            #[cfg(windows)]
+            { config.system.hotkey = DEFAULT_HOTKEY_WINDOWS.to_string(); }
+            config
         };
 
         if !loaded_from_config && config.history.colors.is_empty() {
@@ -507,7 +589,7 @@ impl Config {
         config
     }
 
-    /// Surgically saves current settings to disk, preserving user comments in config.toml.
+    /// Surgically saves current settings to disk, preserving user comments.
     pub fn save(&self) {
         let path = Self::get_config_path();
         if let Some(parent) = path.parent() { let _ = fs::create_dir_all(parent); }
@@ -541,18 +623,23 @@ impl Config {
                 root.insert(key, new_item);
             }
         }
+
         let history_saved = match self.save_history() {
             Ok(()) => true,
-            Err(e) => {
-                log_error(&e);
-                false
-            }
+            Err(e) => { log_error(&e); false }
         };
         if history_saved || !has_history_colors(root) {
             remove_history_colors(root);
         }
-        if fs::write(&path, doc.to_string()).is_ok() {
-            log_step("Config", &format!("Saved changes: {:?}", path));
+
+        let output = doc.to_string();
+        if toml_edit::de::from_str::<Config>(&output).is_err() {
+            log_error("save() produced unparseable TOML — skipping write to prevent corruption");
+            log_error(&format!("--- broken output ---\n{}\n--- end ---", output));
+            return;
+        }
+        if fs::write(&path, output).is_ok() {
+            log_step("Config", &format!("Saved changes: {}", path.display()));
         }
     }
 
@@ -562,6 +649,11 @@ impl Config {
         if self.history.colors.len() > self.history.size {
             self.history.colors.truncate(self.history.size);
         }
+    }
+
+    /// Returns the default hotkey from the baked-in template.
+    pub fn default_hotkey() -> String {
+        DEFAULT_INSTANCE.system.hotkey.clone()
     }
 }
 
@@ -662,8 +754,24 @@ fn has_history_colors(root: &toml_edit::Table) -> bool {
         .is_some()
 }
 
+#[cfg(not(windows))]
 fn dirs_next() -> std::path::PathBuf {
     std::env::var("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
+}
+
+/// Checks write access by attempting to create a temporary probe file.
+/// Recurses into parent if the directory doesn't exist yet.
+#[cfg(windows)]
+fn is_dir_writable(dir: &std::path::Path) -> bool {
+    if dir.exists() {
+        let probe = dir.join(".ie-r-write-probe");
+        match std::fs::File::create(&probe) {
+            Ok(_) => { let _ = std::fs::remove_file(&probe); true }
+            Err(_) => false,
+        }
+    } else {
+        dir.parent().map_or(false, is_dir_writable)
+    }
 }

@@ -7,6 +7,7 @@ pub struct Scout {
     pub _hotkey: HotKey,
 }
 
+use crate::core::config::Config;
 use crate::core::terminal::{log_step, log_warn, log_error};
 
 impl Scout {
@@ -16,8 +17,9 @@ impl Scout {
         let hotkey = match HotKey::from_str(hotkey_str) {
             Ok(h) => h,
             Err(_) => {
-                log_warn(&format!("Failed to parse hotkey '{}'. Falling back to 'Alt+Shift+C'", hotkey_str));
-                HotKey::from_str("Alt+Shift+C").unwrap() // this default should always parse
+                let default = Config::default_hotkey();
+                log_warn(&format!("Failed to parse hotkey '{}'. Falling back to '{}'", hotkey_str, default));
+                HotKey::from_str(&default).unwrap() // this default should always parse
             }
         };
 

@@ -38,7 +38,7 @@ That's the basic loop. But there's more:
 7. **Area Sampling:** `Alt + Scroll` changes the capture area to calculate the average color of a region.
 8. **10 color formats:** HEX, RGB, HSL, HSV, CMYK, Delphi, VB Hex, Long, + **customizable templates**
 9.  **Runtime UI Tweaks:** Adjust magnifier size (`Shift + Scroll`) and font size (`Ctrl + Scroll`) without opening settings.
-10. **Hotkey:** Configurable global hotkey (default Alt+Shift+C for X11) + SIGUSR1 for Wayland compositors
+10. **Hotkey:** Configurable global hotkey (default Alt+Shift+X for X11) + SIGUSR1 for Wayland compositors
 11. **Config:** Single TOML file. Preserves your comments on save. Controls everything: colors, sizes, fonts, physics, effects
 12. **Tray:** SNI system tray with color history, format selection, config access
 
@@ -137,13 +137,13 @@ bind = ALT SHIFT, H, exec, pkill -SIGUSR2 ie-r
 
 **Sway** (`~/.config/sway/config`):
 ```
-bindsym Alt+Shift+c exec pkill -SIGUSR1 ie-r
+bindsym Alt+Shift+x exec pkill -SIGUSR1 ie-r
 bindsym Alt+Shift+h exec pkill -SIGUSR2 ie-r
 ```
 
 **KDE Plasma:** System Settings → Shortcuts → Custom Shortcuts → Add new → Command/URL. Set the command to `pkill -SIGUSR1 ie-r` and assign your preferred key combo.
 
-> On X11 sessions, IE-R also supports a built-in hotkey (default `Alt+Shift+C`), configurable in `~/.config/ie-r/config.toml`.
+> On X11 sessions, IE-R also supports a built-in hotkey (default `Alt+Shift+X`), configurable in `~/.config/ie-r/config.toml`.
 
 ### Autostart
 

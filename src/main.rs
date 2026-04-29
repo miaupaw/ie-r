@@ -1,36 +1,50 @@
 use anyhow::Result;
+#[cfg(unix)]
 use calloop::{
     EventLoop,
     timer::{TimeoutAction, Timer},
 };
+#[cfg(unix)]
 use calloop_wayland_source::WaylandSource;
-use core::capture::{self, OutputMeta};
+use core::capture;
+#[cfg(unix)]
+use core::capture::OutputMeta;
 use core::color_service::ColorService;
+#[cfg(unix)]
 use core::config::Config;
-use core::terminal::{log_info, log_error, log_step, print_logo, log_warn};
+use core::terminal::{print_logo, log_info};
+#[cfg(unix)]
+use core::terminal::{log_error, log_warn};
+use core::terminal::log_step;
+use core::overlay::OverlayApp;
+#[cfg(unix)]
 use daemon::dbus_tray::DBusTray;
 use daemon::scout::Scout;
 use global_hotkey::GlobalHotKeyEvent;
+#[cfg(unix)]
 use std::time::Duration;
+#[cfg(unix)]
 use wayland_client::{Connection, globals::registry_queue_init};
 
 pub mod connectors;
 pub mod core;
 pub mod daemon;
 
+#[cfg(unix)]
 use connectors::wayland::IEWaylandState;
-use core::overlay::OverlayApp;
 pub use daemon::UserEvent;
 
 /// Wayland daemon branch. Thin wrapper around ColorService that adds
 /// only platform-specific orchestration: creating the Layer Shell overlay
 /// and integrating with Calloop.
+#[cfg(unix)]
 struct DaemonApp {
     svc: ColorService,
     _tray: DBusTray,
     _scout: Scout,
 }
 
+#[cfg(unix)]
 impl DaemonApp {
     fn new(tray: DBusTray) -> Result<Self> {
         let svc = ColorService::new();
@@ -98,6 +112,7 @@ impl DaemonApp {
                 canvas,
                 self.svc.config.clone(),
                 self.svc.cached_font_data.clone(),
+                self.svc.hud_font_data.clone(),
                 "COMPOSITOR: WAYLAND".to_string(),
                 state.scale_factor,
             );
@@ -113,6 +128,7 @@ impl DaemonApp {
 /// Global context threaded through all Calloop callbacks.
 /// Combines the Wayland dispatcher, daemon logic, and event queue
 /// for lifecycle management (shutdown, channel handling).
+#[cfg(unix)]
 struct AppState {
     daemon: DaemonApp,
     wayland: IEWaylandState,
@@ -124,6 +140,7 @@ struct AppState {
 
 // ─── Wayland Main Loop ──────────────────────────────────────────────────────
 
+#[cfg(unix)]
 fn run_wayland_daemon() -> Result<()> {
     print_logo();
     log_info("Wayland backend active");
@@ -270,9 +287,9 @@ fn run_wayland_daemon() -> Result<()> {
                 if t.elapsed() >= Duration::from_millis(150) {
                     state.about_requested_at = None;
                     if state.wayland.overlay_app.is_none() && state.wayland.about_surface.is_none() {
-                        let font_data = state.daemon.svc.cached_font_data.clone();
+                        let hud_font = state.daemon.svc.hud_font_data.clone();
                         let dbus_conn = state.daemon.svc.dbus_conn.as_ref();
-                        state.wayland.launch_about(&state.qh, font_data, dbus_conn);
+                        state.wayland.launch_about(&state.qh, hud_font, dbus_conn);
                     }
                 }
             }
@@ -298,7 +315,7 @@ fn run_wayland_daemon() -> Result<()> {
                 if let Some(ref mut o) = state.wayland.overlay_app {
                     let color_deck = o.take_color_deck();
                     let overlay_config = o.config.clone();
-                    
+
                     state.daemon.svc.finalize_overlay(&overlay_config, color_deck);
                 }
 
@@ -336,6 +353,7 @@ fn run_wayland_daemon() -> Result<()> {
 
 // ─── X11 Main Loop ──────────────────────────────────────────────────────────
 
+#[cfg(unix)]
 fn run_x11_daemon() -> Result<()> {
     let svc = ColorService::new();
 
@@ -346,10 +364,201 @@ fn run_x11_daemon() -> Result<()> {
     connectors::x11::run_x11_daemon(svc)
 }
 
+// ─── Windows Main Loop (stub) ───────────────────────────────────────────────
+
+/// Windows daemon — hotkey + tray event loop.
+///
+/// Global hotkey and tray icon both send UserEvent through an mpsc channel.
+/// The main loop polls hotkey events, tray events, and Win32 messages.
+#[cfg(windows)]
+fn run_windows_daemon(is_relaunch: bool) -> Result<()> {
+    // DPI awareness must be set before any window/capture calls.
+    // Safe to call once; subsequent calls return E_ACCESSDENIED (ignored).
+    unsafe {
+        let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwareness(
+            windows::Win32::UI::HiDpi::PROCESS_PER_MONITOR_DPI_AWARE,
+        );
+    }
+
+    print_logo();
+    log_info("Windows backend active");
+
+    let mut svc = ColorService::new();
+    let mut _scout = Scout::new(&svc.config.system.hotkey)?;
+
+    // Show welcome balloon if it's the first run OR a relaunch (re-run triggered by user).
+    // Config flag is consumed after the first run.
+    let show_welcome = svc.config.system.welcome_balloon || is_relaunch;
+
+    // Event channel: tray + IPC → main loop (same pattern as calloop on Linux)
+    let (tx, rx) = std::sync::mpsc::channel::<daemon::UserEvent>();
+    let sender = daemon::event_sender::EventSender::from_channel(tx);
+    let tray = daemon::tray_win::WinTray::new(sender, show_welcome);
+    let tray_hwnd = tray.get_hwnd();
+
+    // If we showed the balloon because of the config flag, turn it off for next time.
+    if svc.config.system.welcome_balloon {
+        svc.config.system.welcome_balloon = false;
+        svc.config.save();
+    }
+
+    log_info(&format!("Hotkey: {} (press to activate)", svc.config.system.hotkey));
+    log_info("Waiting for hotkey...");
+
+    // Message-pump loop: global-hotkey crate on Windows registers hotkeys on a
+    // background thread, but some builds need the main thread to pump messages.
+    // MsgWaitForMultipleObjectsEx avoids busy-spinning while keeping ~50ms latency.
+    loop {
+        // Pump Win32 messages (ensures WM_HOTKEY delivery if registered on this thread)
+        unsafe {
+            let mut msg = std::mem::zeroed::<windows::Win32::UI::WindowsAndMessaging::MSG>();
+            while windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                &mut msg, None, 0, 0,
+                windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+            ).as_bool() {
+                let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+            }
+        }
+
+        // Poll global hotkey events.
+        // WM_HOTKEY on Windows is a single event (press only, no release),
+        // so we trigger on Pressed — unlike Wayland/X11 which fires both.
+        let mut triggered = false;
+        while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            if event.state == global_hotkey::HotKeyState::Pressed {
+                triggered = true;
+            }
+        }
+
+        // Poll tray / IPC events
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                daemon::UserEvent::LaunchOverlay(_) => { triggered = true; }
+                daemon::UserEvent::EditConfig => {
+                    let config_path = crate::core::config::Config::get_config_path();
+                    log_info(&format!("Opening config: {:?}", config_path));
+                    let _ = open::that(config_path);
+                }
+                daemon::UserEvent::SelectTemplate(key) => {
+                    log_step("Menu", &format!("Template: {}", key));
+                    svc.config.templates.selected = key;
+                    svc.config.save();
+                }
+                daemon::UserEvent::ToggleHUD => {
+                    svc.config.hud.show = !svc.config.hud.show;
+                    svc.config.save();
+                    log_step("Menu", &format!("HUD: {}", if svc.config.hud.show { "on" } else { "off" }));
+                }
+                daemon::UserEvent::OpenHomepage => {
+                    daemon::open_homepage();
+                }
+                daemon::UserEvent::CopyFromHistory(hex) => {
+                    let s = hex.trim_start_matches('#');
+                    if let Ok(val) = u32::from_str_radix(s, 16) {
+                        let r = ((val >> 16) & 0xFF) as u8;
+                        let g = ((val >> 8) & 0xFF) as u8;
+                        let b = (val & 0xFF) as u8;
+                        svc.copy_color(&[image::Rgba([r, g, b, 255])]);
+                    }
+                }
+                daemon::UserEvent::ShowAbout => {
+                    daemon::about_win::show_about(svc.hud_font_data.clone());
+                }
+                daemon::UserEvent::Quit => {
+                    log_info("Quit requested. Exiting.");
+                    return Ok(());
+                }
+            }
+        }
+
+        if triggered {
+            log_info("Hotkey triggered. Launching overlay...");
+            let prev_hotkey = svc.config.system.hotkey.clone();
+            let mut perf = svc.reload_config();
+
+            if svc.config.system.hotkey != prev_hotkey {
+                _scout = Scout::new(&svc.config.system.hotkey).unwrap_or(_scout);
+                log_step("Scout", &format!("Hotkey updated: {}", svc.config.system.hotkey));
+            }
+
+            match capture::capture_all_outputs() {
+                Ok(canvas) => {
+                    perf.log("Screen captured");
+
+                    let overlay = OverlayApp::new(
+                        canvas,
+                        svc.config.clone(),
+                        svc.cached_font_data.clone(),
+                        svc.hud_font_data.clone(),
+                        "COMPOSITOR: WINDOWS".to_string(),
+                        1.0, // DPI handled by SetProcessDpiAwareness
+                    );
+
+                    match connectors::windows::run_overlay(overlay, tray_hwnd) {
+                        Ok(result) => {
+                            svc.finalize_overlay(&result.config, result.color_deck);
+                            log_step("Done", "Overlay closed");
+                        }
+                        Err(e) => log_step("Error", &format!("Overlay failed: {}", e)),
+                    }
+                }
+                Err(e) => log_step("Error", &format!("Capture failed: {}", e)),
+            }
+
+            // Drain any hotkey events that accumulated while overlay was blocking
+            while GlobalHotKeyEvent::receiver().try_recv().is_ok() {}
+
+            log_info("Waiting for hotkey...");
+        }
+
+        // Wait for messages or 50ms timeout — avoids busy spin
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::MsgWaitForMultipleObjectsEx(
+                None, 50,
+                windows::Win32::UI::WindowsAndMessaging::QS_ALLINPUT,
+                windows::Win32::UI::WindowsAndMessaging::MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS(0),
+            );
+        }
+    }
+}
+
 // ─── Entry Point ─────────────────────────────────────────────────────────────
+
+/// Checks for an existing instance via the hidden tray window.
+/// If found, posts WM_CLOSE and waits for the window to disappear (up to 2 sec).
+/// Returns true if an existing instance was found.
+#[cfg(windows)]
+fn check_and_kill_existing_instance_win() -> bool {
+    use std::time::Duration;
+    use windows::Win32::Foundation::*;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+
+    unsafe {
+        let hwnd = match FindWindowW(windows::core::w!("IERTray"), None) {
+            Ok(h) if !h.is_invalid() => h,
+            _ => return false,
+        };
+
+        log_info("Found existing instance. Asking it to quit politely...");
+        let _ = PostMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+
+        // Wait for the old tray window to disappear (up to 2 seconds)
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(100));
+            if FindWindowW(windows::core::w!("IERTray"), None).is_err() {
+                log_info("Old instance successfully terminated. Taking over...");
+                return true;
+            }
+        }
+        crate::core::terminal::log_warn("Old instance didn't quit in time. Proceeding anyway.");
+        true
+    }
+}
 
 /// Checks via D-Bus whether another instance of the application is already running.
 /// If it is, politely asks it to quit and waits for it to release resources.
+#[cfg(unix)]
 fn check_and_kill_existing_instance() {
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
@@ -408,25 +617,73 @@ fn check_and_kill_existing_instance() {
 fn main() -> Result<()> {
     // 0. Announce our correct name to the OS so killall -SIGUSR1 ie-r works
     // even through layers of wrappers and loaders.
-    let ret = unsafe { libc::prctl(libc::PR_SET_NAME, "ie-r\0".as_ptr()) };
-    if ret != 0 {
-        log_warn("prctl(PR_SET_NAME) failed — killall -SIGUSR1 ie-r may not work");
+    #[cfg(unix)]
+    {
+        let ret = unsafe { libc::prctl(libc::PR_SET_NAME, "ie-r\0".as_ptr()) };
+        if ret != 0 {
+            log_warn("prctl(PR_SET_NAME) failed — killall -SIGUSR1 ie-r may not work");
+        }
+    }
+
+    // Windows: enable ANSI escape sequences in console
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Console::*;
+        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        let mut mode = 0u32;
+        GetConsoleMode(handle, &mut mode);
+        let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
 
     // 1. Politely ask the old process to quit.
+    #[cfg(unix)]
     check_and_kill_existing_instance();
 
-    // 2. Attempt to connect to Wayland. If $WAYLAND_DISPLAY is empty or
-    // the compositor does not respond, take the X11 path.
-    match Connection::connect_to_env() {
-        Ok(_conn) => {
-            // conn is dropped here — run_wayland_daemon will create its own.
-            drop(_conn);
-            run_wayland_daemon()
+    // 1. Politely ask the old process to quit (Windows).
+    // FindWindowW("IERTray") → PostMessageW(WM_CLOSE) → wait for window to disappear.
+    #[cfg(windows)]
+    let is_relaunch = check_and_kill_existing_instance_win();
+
+    // 1.5. --capture-test: capture → PNG → exit (Phase 1 smoke test)
+    #[cfg(windows)]
+    if std::env::args().any(|a| a == "--capture-test") {
+        use core::capture;
+        use core::terminal::log_step;
+        print_logo();
+        log_info("Capture test mode");
+        let canvas = capture::capture_all_outputs()?;
+        let tile = canvas.active();
+        let w = tile.capture.width;
+        let h = tile.capture.height;
+        let rgba: Vec<u8> = tile.capture.xrgb_buffer.iter().flat_map(|&px| {
+            [((px >> 16) & 0xFF) as u8, ((px >> 8) & 0xFF) as u8, (px & 0xFF) as u8, 255u8]
+        }).collect();
+        let path = "ie-r-capture-test.png";
+        image::save_buffer(path, &rgba, w, h, image::ColorType::Rgba8)?;
+        log_step("Test", &format!("Saved {}x{} → {}", w, h, path));
+        return Ok(());
+    }
+
+    // 2. Platform dispatch
+    #[cfg(unix)]
+    {
+        // Attempt to connect to Wayland. If $WAYLAND_DISPLAY is empty or
+        // the compositor does not respond, take the X11 path.
+        match Connection::connect_to_env() {
+            Ok(_conn) => {
+                // conn is dropped here — run_wayland_daemon will create its own.
+                drop(_conn);
+                run_wayland_daemon()
+            }
+            Err(e) => {
+                log_info(&format!("Wayland connection failed ({}). Falling back to X11/Winit.", e));
+                run_x11_daemon()
+            }
         }
-        Err(e) => {
-            log_info(&format!("Wayland connection failed ({}). Falling back to X11/Winit.", e));
-            run_x11_daemon()
-        }
+    }
+
+    #[cfg(windows)]
+    {
+        run_windows_daemon(is_relaunch)
     }
 }

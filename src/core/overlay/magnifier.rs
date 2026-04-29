@@ -16,6 +16,10 @@ pub struct RenderCtx<'a> {
     pub dt: f64,
     pub flash_intensity: f32,
     pub frame_color: u32,
+    // Current monitor bounds in canvas-local coords (x, y, w, h).
+    // Magnifier clamps to this rect so it never crosses monitor boundaries.
+    // None → fall back to full canvas bounds.
+    pub monitor_rect: Option<(i32, i32, i32, i32)>,
 }
 
 const MARGIN: usize = 1;
@@ -293,14 +297,20 @@ impl Magnifier {
         let mut target_x = mx + config.magnifier.offset_x as i32;
         let mut target_y = my - (final_outer_height as i32 / 2) + config.magnifier.offset_y as i32;
 
-        if target_x + final_total_width as i32 > width as i32 {
+        // Clamp to current monitor bounds (Windows multi-monitor) or full canvas (Wayland per-output).
+        let (mon_x0, mon_y0, mon_x1, mon_y1) = match ctx.monitor_rect {
+            Some((x, y, w, h)) => (x, y, x + w, y + h),
+            None => (0, 0, width as i32, height as i32),
+        };
+
+        if target_x + final_total_width as i32 > mon_x1 {
             target_x = mx - final_total_width as i32 - config.magnifier.offset_x;
         }
-        if target_y + final_outer_height as i32 > height as i32 {
-            target_y = height as i32 - final_outer_height as i32;
+        if target_y + final_outer_height as i32 > mon_y1 {
+            target_y = mon_y1 - final_outer_height as i32;
         }
-        target_x = target_x.max(0);
-        target_y = target_y.max(0);
+        target_x = target_x.max(mon_x0);
+        target_y = target_y.max(mon_y0);
 
         let (mut current_x, mut current_y) = self.anim_pos.unwrap_or((mx as f64, my as f64));
 
