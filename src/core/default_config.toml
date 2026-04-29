@@ -99,7 +99,7 @@ cmyk    = "{c}%, {m}%, {y}%, {k}%"
 # Settings live here; picked colors are stored separately in
 # ~/.local/state/ie-r/history.toml (or $XDG_STATE_HOME/ie-r/history.toml).
 [history]
-size = 10             # max colors to remember
+size = 15             # max colors to remember
 reverse_order = true  # newest first in tray menu
 
 # Global system integration settings.
