@@ -10,7 +10,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 use super::ScreenCapture;
-use crate::core::terminal::log_step;
+use crate::core::terminal::{log_step, log_warn};
 use std::time::{Duration, Instant};
 use wayland_client::{
     Connection, Dispatch, QueueHandle,
@@ -254,6 +254,16 @@ fn convert_to_xrgb(ptr: *const u8, width: u32, height: u32, stride: u32, format:
             return u32_slice.iter().map(|&p| p & 0x00FF_FFFF).collect();
         }
         return u32_slice.to_vec();
+    }
+
+    match format {
+        wl_shm::Format::Xrgb8888 | wl_shm::Format::Argb8888
+        | wl_shm::Format::Xbgr8888 | wl_shm::Format::Abgr8888 => {}
+        _ => log_warn(&format!(
+            "Exotic pixel format detected: {:?} — colors may be wrong. \
+             Please report at https://github.com/spicebrains/ie-r/issues",
+            format
+        )),
     }
 
     let size = (stride * height) as usize;
