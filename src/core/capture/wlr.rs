@@ -226,6 +226,15 @@ fn convert_to_xrgb(ptr: *const u8, width: u32, height: u32, stride: u32, format:
     // a zero-copy cast of the entire block is possible.
     let tightly_packed = stride == width * 4;
 
+    if tightly_packed && matches!(format, wl_shm::Format::Xbgr8888 | wl_shm::Format::Abgr8888) {
+        // Xbgr8888 little-endian: [R,G,B,X] → swap R↔B to get 0x00RRGGBB
+        let byte_len = num_pixels * 4;
+        let slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
+        return slice.chunks_exact(4).map(|c| {
+            ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | (c[2] as u32)
+        }).collect();
+    }
+
     if tightly_packed && matches!(format, wl_shm::Format::Xrgb8888 | wl_shm::Format::Argb8888) {
         let byte_len = num_pixels * 4;
         let slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
@@ -256,11 +265,14 @@ fn convert_to_xrgb(ptr: *const u8, width: u32, height: u32, stride: u32, format:
         let row_slice = &slice[row_start..row_start + (width * 4) as usize];
 
         for chunk in row_slice.chunks_exact(4) {
-            // In Hyprland/wlroots the format is often Argb8888 (in memory: B G R A)
-            // or Xrgb8888 (B G R X). We normalize to 0x00RRGGBB.
-            let b = chunk[0] as u32;
-            let g = chunk[1] as u32;
-            let r = chunk[2] as u32;
+            let (r, g, b) = match format {
+                // Xbgr8888/Abgr8888 little-endian: [R,G,B,X]
+                wl_shm::Format::Xbgr8888 | wl_shm::Format::Abgr8888 =>
+                    (chunk[0] as u32, chunk[1] as u32, chunk[2] as u32),
+                // Xrgb8888/Argb8888 little-endian: [B,G,R,X]
+                _ =>
+                    (chunk[2] as u32, chunk[1] as u32, chunk[0] as u32),
+            };
             buf.push((r << 16) | (g << 8) | b);
         }
     }
