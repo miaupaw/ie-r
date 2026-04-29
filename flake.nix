@@ -86,7 +86,7 @@
         # ── Commands & Apps ──────────────────────────────────────────────────
         apps.${system} = {
             default  = { type = "app"; program = "${self.packages.${system}.default}/bin/ie-r"; };
-            appimage = { type = "app"; program = "${self.packages.${system}.appimage}"; };
+            appimage = { type = "app"; program = "${self.packages.${system}.appimage}/ie-r-v${version}-x86_64.AppImage"; };
 
             # Windows installer — run with: nix run .#windows-installer
             # Self-contained: builds exe + assembles bundle + runs NSIS

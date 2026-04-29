@@ -184,23 +184,38 @@ let
   };
 
   # ── AppImage ──────────────────────────────────────────────────────────
-  # BROKEN: pkgs.appimagekit removed from nixpkgs 25.11. Was already a stub
-  # before the refactor — distribution uses portable.zip + windows-installer.exe.
-  # Skeleton kept for completeness / future fix. Tracked: task #14.
+  # AppImage Type 2 = type2-runtime ELF + squashfs(AppDir), concatenated.
+  # No appimagekit (gone from nixpkgs 25.11), no AppImage-running-AppImage —
+  # just squashfsTools and a pinned runtime via fetchurl. AppDir is portable/
+  # plus AppImage entry points (AppRun, top-level desktop / icon / .DirIcon).
+  appimage-runtime = pkgs.fetchurl {
+    url  = "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64";
+    hash = "sha256-L8qLRDySUQ8Ug6iD9gBhrQm0a5eLJjHIB82HOkfsJg0=";
+  };
+
   appimage = pkgs.stdenv.mkDerivation {
-    pname = "ie-r-appimage"; inherit version; src = ../.;
-    nativeBuildInputs = [ pkgs.appimagekit ];
-    buildCommand = '' # bash
-        mkdir -p AppDir/usr
-        cp -rL ${portable}/* AppDir/usr/
+    pname = "ie-r-appimage";
+    inherit version;
+    dontUnpack = true;
+    nativeBuildInputs = [ pkgs.squashfsTools ];
 
-        # AppImage specific adjustments
-        mv AppDir/usr/share/ie-r.desktop AppDir/
-        cp AppDir/usr/share/icons/hicolor/scalable/apps/ie-r.svg AppDir/
-        ln -s ie-r.svg AppDir/.DirIcon
+    buildPhase = '' # bash
+        mkdir AppDir
+        cp -rL ${portable}/* AppDir/
+        chmod -R u+w AppDir
+
         ln -s bin/ie-r AppDir/AppRun
+        cp AppDir/share/ie-r.desktop AppDir/ie-r.desktop
+        cp AppDir/share/icons/hicolor/scalable/apps/ie-r.svg AppDir/ie-r.svg
+        ln -s ie-r.svg AppDir/.DirIcon
 
-        export ARCH=x86_64 && appimagetool AppDir $out
+        mksquashfs AppDir appdir.sqfs -root-owned -noappend -comp gzip
+    '';
+
+    installPhase = '' # bash
+        mkdir -p $out
+        cat ${appimage-runtime} appdir.sqfs > $out/ie-r-v${version}-x86_64.AppImage
+        chmod +x $out/ie-r-v${version}-x86_64.AppImage
     '';
   };
 
