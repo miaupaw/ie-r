@@ -29,6 +29,7 @@ pub struct ColorService {
 impl ColorService {
     pub fn new() -> Self {
         let config = Config::load(false);
+        crate::daemon::dbus_menu::DBusMenu::prime_layout_state(&config);
         let clipboard = Clipboard::new().ok();
         let dbus_conn = zbus::blocking::Connection::session().ok();
 
@@ -63,6 +64,7 @@ impl ColorService {
 
         self.config = Config::load(true);
         log_info("Configuration hot-reloaded");
+        crate::daemon::dbus_menu::DBusMenu::notify_layout_update(&self.config);
         perf.log("Config loaded");
 
         // Font hot-reload: if font family changed, search in the already-loaded database.
@@ -133,7 +135,7 @@ impl ColorService {
     /// Four steps (always in this order):
     ///   1. Sync   — merge changed fields from overlay_config back into self.config
     ///   2. Copy   — if colors picked: clipboard + history; otherwise log "cancelled"
-    ///   3. Save   — single disk write: config + history together
+    ///   3. Save   — coordinated persistence: config.toml + history.toml
     ///   4. Notify — update tray menu from the already-current self.config
     pub fn finalize_overlay(&mut self, overlay_config: &crate::core::config::Config, color_deck: Vec<image::Rgba<u8>>) {
         //    Sync: optics/HUD/format settings from overlay → daemon config
@@ -151,7 +153,7 @@ impl ColorService {
             log_info("Selection cancelled.");
         }
 
-        //    Save: single disk write (settings + history)
+        //    Save: persist settings and history to their respective files
         self.config.save();
         log_success("Saved", "Configuration and history updated");
 

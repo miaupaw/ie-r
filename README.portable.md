@@ -62,7 +62,7 @@ bindsym Alt+Shift+h exec pkill -SIGUSR2 ie-r
 
 ## Configuration
 
-All settings live in `~/.config/ie-r/config.toml`. Created with defaults on first run. IE-R preserves your comments when updating the config.
+Settings live in `~/.config/ie-r/config.toml`. Picked color history lives in `~/.local/state/ie-r/history.toml`. Files are created as needed on first run, and IE-R preserves your comments when updating the config.
 
 ---
 

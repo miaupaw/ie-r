@@ -1,4 +1,4 @@
-/// Rofi/wofi/fuzzel fallback menu for wlroots-based compositors.
+/// External launcher menu for wlroots-based compositors.
 ///
 /// On KDE/GNOME the tray host renders dbusmenu popups natively.
 /// On wlroots (Hyprland, Sway, niri, river…) GTK3 can't spawn a popup
@@ -6,7 +6,10 @@
 
 use super::UserEvent;
 use super::event_sender::EventSender;
+use crate::core::config::Config;
+use crate::core::config::TEMPLATE_LABELS;
 use crate::core::terminal::log_error;
+use crate::daemon::dbus_menu::MenuSnapshot;
 
 /// Desktop environments known to render dbusmenu popups natively.
 /// Everything else gets the external menu fallback.
@@ -20,30 +23,99 @@ pub fn has_native_popup() -> bool {
     desktop.split(':').any(|d| NATIVE_POPUP_DESKTOPS.contains(&d))
 }
 
-/// Show the context menu via an external launcher (rofi → wofi → fuzzel).
-pub async fn show_menu(proxy: EventSender) {
-    use crate::core::config::TEMPLATE_LABELS;
-    use crate::daemon::dbus_menu::MenuSnapshot;
-    use tokio::io::AsyncWriteExt;
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Action {
+    History(String),
+    Template(String),
+    ToggleHUD,
+    EditConfig,
+    About,
+    Homepage,
+    Quit,
+}
 
-    let snap = MenuSnapshot::take();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuInputMode {
+    Plain,
+    RofiIcons,
+}
 
-    enum Action {
-        History(String),
-        Template(String),
-        ToggleHUD,
-        EditConfig,
-        About,
-        Homepage,
-        Quit,
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LauncherSpec {
+    cmd: String,
+    args: Vec<String>,
+    input_mode: MenuInputMode,
+    custom: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MenuEntry {
+    label: String,
+    rofi_line: Option<String>,
+    action: Action,
+}
+
+impl MenuEntry {
+    fn line_for(&self, mode: MenuInputMode) -> &str {
+        match mode {
+            MenuInputMode::Plain => &self.label,
+            MenuInputMode::RofiIcons => self.rofi_line.as_deref().unwrap_or(&self.label),
+        }
+    }
+}
+
+fn resolve_launchers(menu_command: Option<&[String]>) -> Result<Vec<LauncherSpec>, String> {
+    if let Some(command) = menu_command {
+        if command.is_empty() {
+            return Err("Invalid config: system.menu_command must contain an executable.".to_string());
+        }
+
+        let executable = command[0].trim();
+        if executable.is_empty() {
+            return Err("Invalid config: system.menu_command[0] must be a non-empty executable.".to_string());
+        }
+
+        return Ok(vec![LauncherSpec {
+            cmd: executable.to_string(),
+            args: command[1..].to_vec(),
+            input_mode: MenuInputMode::Plain,
+            custom: true,
+        }]);
     }
 
-    // Prepare temp dir for color swatch PNGs (rofi icon support)
+    Ok(vec![
+        LauncherSpec {
+            cmd: "rofi".to_string(),
+            args: vec![
+                "-dmenu".to_string(),
+                "-p".to_string(),
+                "IE-R".to_string(),
+                "-no-custom".to_string(),
+                "-show-icons".to_string(),
+            ],
+            input_mode: MenuInputMode::RofiIcons,
+            custom: false,
+        },
+        LauncherSpec {
+            cmd: "wofi".to_string(),
+            args: vec!["--dmenu".to_string(), "--prompt".to_string(), "IE-R".to_string()],
+            input_mode: MenuInputMode::Plain,
+            custom: false,
+        },
+        LauncherSpec {
+            cmd: "fuzzel".to_string(),
+            args: vec!["--dmenu".to_string(), "--prompt".to_string(), "IE-R ".to_string()],
+            input_mode: MenuInputMode::Plain,
+            custom: false,
+        },
+    ])
+}
+
+fn build_menu_entries(snap: &MenuSnapshot) -> Vec<MenuEntry> {
+    let mut entries = Vec::new();
+
     let color_icon_dir = std::path::PathBuf::from("/tmp/ie-r-colors");
     let _ = std::fs::create_dir_all(&color_icon_dir);
-
-    let mut lines: Vec<String> = Vec::new();
-    let mut actions: Vec<Action> = Vec::new();
 
     for hex in &snap.history {
         let filename = format!("{}.png", hex.trim_start_matches('#'));
@@ -52,88 +124,129 @@ pub async fn show_menu(proxy: EventSender) {
             let png = crate::daemon::dbus_menu::generate_color_png(hex);
             let _ = std::fs::write(&icon_path, &png);
         }
-        lines.push(format!("{}\0icon\x1f{}", hex, icon_path.display()));
-        actions.push(Action::History(hex.clone()));
+
+        entries.push(MenuEntry {
+            label: hex.clone(),
+            rofi_line: Some(format!("{}\0icon\x1f{}", hex, icon_path.display())),
+            action: Action::History(hex.clone()),
+        });
     }
 
     for &(key, label) in TEMPLATE_LABELS {
         let dot = if snap.selected_template == key { "●" } else { "○" };
-        lines.push(format!("{} {}", dot, label));
-        actions.push(Action::Template(key.to_string()));
+        entries.push(MenuEntry {
+            label: format!("{} {}", dot, label),
+            rofi_line: None,
+            action: Action::Template(key.to_string()),
+        });
     }
 
     let hud_dot = if snap.show_hud { "✓" } else { "○" };
-    lines.push(format!("{} Show HUD", hud_dot));
-    actions.push(Action::ToggleHUD);
+    entries.push(MenuEntry {
+        label: format!("{} Show HUD", hud_dot),
+        rofi_line: None,
+        action: Action::ToggleHUD,
+    });
+    entries.push(MenuEntry {
+        label: "⚙ Edit Config".to_string(),
+        rofi_line: None,
+        action: Action::EditConfig,
+    });
+    entries.push(MenuEntry {
+        label: "🌐 Homepage".to_string(),
+        rofi_line: None,
+        action: Action::Homepage,
+    });
+    entries.push(MenuEntry {
+        label: "ℹ About".to_string(),
+        rofi_line: None,
+        action: Action::About,
+    });
+    entries.push(MenuEntry {
+        label: "✕ Quit".to_string(),
+        rofi_line: None,
+        action: Action::Quit,
+    });
 
-    lines.push("⚙ Edit Config".to_string());
-    actions.push(Action::EditConfig);
+    entries
+}
 
-    lines.push("🌐 Homepage".to_string());
-    actions.push(Action::Homepage);
+fn build_menu_input(entries: &[MenuEntry], mode: MenuInputMode) -> String {
+    entries.iter().map(|entry| entry.line_for(mode)).collect::<Vec<_>>().join("\n")
+}
 
-    lines.push("ℹ About".to_string());
-    actions.push(Action::About);
-
-    lines.push("✕ Quit".to_string());
-    actions.push(Action::Quit);
-
-    let input = lines.join("\n");
-
-    // Fallback chain: rofi → wofi → fuzzel
-    let launchers: &[(&str, &[&str])] = &[
-        ("rofi",   &["-dmenu", "-p", "IE-R", "-format", "i", "-no-custom", "-show-icons"]),
-        ("wofi",   &["--dmenu", "--prompt", "IE-R"]),
-        ("fuzzel", &["--dmenu", "--prompt", "IE-R "]),
-    ];
-
-    let mut child = None;
-    for (cmd, args) in launchers {
-        match tokio::process::Command::new(cmd)
-            .args(*args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-        {
-            Ok(c) => { child = Some(c); break; }
-            Err(_) => continue,
-        }
+fn resolve_action(selection: &str, entries: &[MenuEntry]) -> Option<Action> {
+    let normalized = selection.split('\0').next().unwrap_or(selection).trim();
+    if normalized.is_empty() {
+        return None;
     }
 
-    let mut child = match child {
-        Some(c) => c,
-        None => {
-            log_error("No menu launcher found. Install rofi, wofi, or fuzzel.");
+    if let Ok(idx) = normalized.parse::<usize>() {
+        return entries.get(idx).map(|entry| entry.action.clone());
+    }
+
+    entries.iter().find(|entry| entry.label == normalized).map(|entry| entry.action.clone())
+}
+
+fn dispatch_action(proxy: &EventSender, action: Action) {
+    match action {
+        Action::History(hex)  => { let _ = proxy.send(UserEvent::CopyFromHistory(hex)); }
+        Action::Template(key) => { let _ = proxy.send(UserEvent::SelectTemplate(key)); }
+        Action::ToggleHUD     => { let _ = proxy.send(UserEvent::ToggleHUD); }
+        Action::EditConfig    => { let _ = proxy.send(UserEvent::EditConfig); }
+        Action::About         => { let _ = proxy.send(UserEvent::ShowAbout); }
+        Action::Homepage      => { let _ = proxy.send(UserEvent::OpenHomepage); }
+        Action::Quit          => { let _ = proxy.send(UserEvent::Quit); }
+    }
+}
+
+/// Show the context menu via an external launcher (custom command or rofi → wofi → fuzzel).
+pub async fn show_menu(proxy: EventSender) {
+    use tokio::io::AsyncWriteExt;
+
+    let snap = MenuSnapshot::take();
+    let entries = build_menu_entries(&snap);
+    let menu_command = Config::read_menu_command_from_disk().unwrap_or(snap.menu_command);
+    let launchers = match resolve_launchers(menu_command.as_deref()) {
+        Ok(launchers) => launchers,
+        Err(err) => {
+            log_error(&err);
             return;
         }
     };
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(input.as_bytes()).await;
-    }
+    for launcher in launchers {
+        let input = build_menu_input(&entries, launcher.input_mode);
 
-    let out = match child.wait_with_output().await {
-        Ok(o) => o,
-        Err(e) => { log_error(&format!("menu launcher failed: {}", e)); return; }
-    };
+        let mut child = match tokio::process::Command::new(&launcher.cmd)
+            .args(&launcher.args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(err) if launcher.custom => {
+                log_error(&format!("Custom menu launcher failed to spawn ({}): {}", launcher.cmd, err));
+                return;
+            }
+            Err(_) => continue,
+        };
 
-    let idx_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if idx_str.is_empty() { return; }
-
-    let idx: usize = match idx_str.parse() {
-        Ok(i) => i,
-        Err(_) => return,
-    };
-
-    if let Some(action) = actions.into_iter().nth(idx) {
-        match action {
-            Action::History(hex)  => { let _ = proxy.send(UserEvent::CopyFromHistory(hex)); }
-            Action::Template(key) => { let _ = proxy.send(UserEvent::SelectTemplate(key)); }
-            Action::ToggleHUD     => { let _ = proxy.send(UserEvent::ToggleHUD); }
-            Action::EditConfig    => { let _ = proxy.send(UserEvent::EditConfig); }
-            Action::About         => { let _ = proxy.send(UserEvent::ShowAbout); }
-            Action::Homepage      => { let _ = proxy.send(UserEvent::OpenHomepage); }
-            Action::Quit          => { let _ = proxy.send(UserEvent::Quit); }
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(input.as_bytes()).await;
         }
+
+        let out = match child.wait_with_output().await {
+            Ok(output) => output,
+            Err(err) => { log_error(&format!("menu launcher failed: {}", err)); return; }
+        };
+
+        let selection = String::from_utf8_lossy(&out.stdout);
+        if let Some(action) = resolve_action(&selection, &entries) {
+            dispatch_action(&proxy, action);
+        }
+        return;
     }
+
+    log_error("No menu launcher found. Install rofi, wofi, or fuzzel, or set system.menu_command.");
 }
