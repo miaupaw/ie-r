@@ -74,7 +74,10 @@ impl DaemonApp {
                 .and_then(|i| i.logical_size)
                 .map(|s| s.0)
                 .unwrap_or(0);
-            OutputMeta { output: o, name, logical_pos, logical_w }
+            let transform = info.as_ref()
+                .map(|i| i.transform)
+                .unwrap_or(wayland_client::protocol::wl_output::Transform::Normal);
+            OutputMeta { output: o, name, logical_pos, logical_w, transform }
         }).collect();
 
         let screencopy = match (&state.screencopy_manager, &state.shm) {
