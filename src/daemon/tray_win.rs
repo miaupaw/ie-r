@@ -146,7 +146,8 @@ fn run_tray_thread(sender: EventSender, hwnd_store: Arc<AtomicIsize>, show_welco
         let cy = GetSystemMetrics(SM_CYSMICON);
         let hicon = LoadImageW(
             GetModuleHandleW(None).unwrap_or_default(),
-            PCWSTR(std::ptr::dangling::<u16>()), // MAKEINTRESOURCEW(1) — matches `1 ICON` in .rc
+            #[allow(clippy::manual_dangling_ptr)]
+            PCWSTR(1 as *const u16), // MAKEINTRESOURCEW(1) — matches `1 ICON` in .rc; dangling() gives addr=2, not 1
             IMAGE_ICON,
             cx, cy,
             LR_SHARED,
