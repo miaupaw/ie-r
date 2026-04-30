@@ -186,11 +186,11 @@ impl PhysicalCanvas {
                 }
             }
         }
-        if count > 0 {
-            ((sum_r / count) as u8, (sum_g / count) as u8, (sum_b / count) as u8)
-        } else {
-            (0, 0, 0)
-        }
+        (
+            sum_r.checked_div(count).unwrap_or(0) as u8,
+            sum_g.checked_div(count).unwrap_or(0) as u8,
+            sum_b.checked_div(count).unwrap_or(0) as u8,
+        )
     }
 
     /// The tile where the overlay surface lives.

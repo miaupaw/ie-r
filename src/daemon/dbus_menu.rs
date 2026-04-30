@@ -177,8 +177,7 @@ impl DBusMenu {
         sep_tpl_props.insert("type".to_string(), Value::from("separator"));
         children.push(Value::from((23i32, sep_tpl_props, Vec::<Value>::new())));
 
-        let mut tpl_id = 200i32;
-        for &(key, label) in TEMPLATE_LABELS {
+        for (tpl_id, &(key, label)) in (200i32..).zip(TEMPLATE_LABELS.iter()) {
             let mut props: HashMap<String, Value> = HashMap::new();
             props.insert("label".to_string(), Value::from(label));
             props.insert("enabled".to_string(), Value::from(true));
@@ -191,7 +190,6 @@ impl DBusMenu {
 
             children.push(Value::from((tpl_id, props, Vec::<Value>::new())));
             map.insert(tpl_id, key.to_string());
-            tpl_id += 1;
         }
 
         // --- SECTION: HUD Toggle ---

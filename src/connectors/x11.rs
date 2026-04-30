@@ -558,56 +558,52 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
             && let DeviceEvent::Key(key) = event {
                 let mut needs_wake = false;
                 match key.physical_key {
-                    PhysicalKey::Code(KeyCode::Escape) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::Cancel);
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Escape) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::Cancel);
+                        needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Backquote) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::ToggleHud);
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Backquote) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::ToggleHud);
+                        needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit1) | PhysicalKey::Code(KeyCode::Numpad1) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::SelectFormatDigit(1));
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Digit1) | PhysicalKey::Code(KeyCode::Numpad1)
+                        if key.state == ElementState::Pressed =>
+                    {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(1));
+                        needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit2) | PhysicalKey::Code(KeyCode::Numpad2) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::SelectFormatDigit(2));
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Digit2) | PhysicalKey::Code(KeyCode::Numpad2)
+                        if key.state == ElementState::Pressed =>
+                    {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(2));
+                        needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit3) | PhysicalKey::Code(KeyCode::Numpad3) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::SelectFormatDigit(3));
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Digit3) | PhysicalKey::Code(KeyCode::Numpad3)
+                        if key.state == ElementState::Pressed =>
+                    {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(3));
+                        needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit4) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(4)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit4) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(4)); needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit5) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(5)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit5) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(5)); needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit6) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(6)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit6) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(6)); needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit7) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(7)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit7) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(7)); needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit8) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(8)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit8) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(8)); needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit9) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(9)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit9) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(9)); needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Digit0) => {
-                        if key.state == ElementState::Pressed { ow.app.handle_action(UserAction::SelectFormatDigit(0)); needs_wake = true; }
+                    PhysicalKey::Code(KeyCode::Digit0) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::SelectFormatDigit(0)); needs_wake = true;
                     }
                     PhysicalKey::Code(KeyCode::ShiftLeft)
                     | PhysicalKey::Code(KeyCode::ShiftRight) => {
@@ -660,25 +656,23 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
                             ow.app.handle_action(UserAction::KeyRelease { dx: 1, dy: 0 });
                         }
                     }
-                    PhysicalKey::Code(KeyCode::Enter) | PhysicalKey::Code(KeyCode::NumpadEnter) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::PickColor { serial: ow.shift_pressed });
-                            if ow.app.blink.is_some()
-                                && let Some(w) = &ow.window {
-                                    w.set_cursor(winit::window::CursorIcon::Default);
-                                }
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Enter) | PhysicalKey::Code(KeyCode::NumpadEnter)
+                        if key.state == ElementState::Pressed =>
+                    {
+                        ow.app.handle_action(UserAction::PickColor { serial: ow.shift_pressed });
+                        if ow.app.blink.is_some()
+                            && let Some(w) = &ow.window {
+                                w.set_cursor(winit::window::CursorIcon::Default);
+                            }
+                        needs_wake = true;
                     }
-                    PhysicalKey::Code(KeyCode::Space) => {
-                        if key.state == ElementState::Pressed {
-                            ow.app.handle_action(UserAction::PickColor { serial: true });
-                            if ow.app.blink.is_some()
-                                && let Some(w) = &ow.window {
-                                    w.set_cursor(winit::window::CursorIcon::Default);
-                                }
-                            needs_wake = true;
-                        }
+                    PhysicalKey::Code(KeyCode::Space) if key.state == ElementState::Pressed => {
+                        ow.app.handle_action(UserAction::PickColor { serial: true });
+                        if ow.app.blink.is_some()
+                            && let Some(w) = &ow.window {
+                                w.set_cursor(winit::window::CursorIcon::Default);
+                            }
+                        needs_wake = true;
                     }
                     _ => {}
                 }

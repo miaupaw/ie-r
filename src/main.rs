@@ -220,12 +220,11 @@ fn run_wayland_daemon() -> Result<()> {
                 state.daemon.svc.config.save();
                 daemon::dbus_menu::DBusMenu::notify_template_changed(&key);
             }
-            calloop::channel::Event::Msg(UserEvent::ShowAbout) => {
+            calloop::channel::Event::Msg(UserEvent::ShowAbout)
                 if state.wayland.overlay_app.is_none() && state.wayland.about_surface.is_none()
-                    && state.about_requested_at.is_none()
-                {
-                    state.about_requested_at = Some(std::time::Instant::now());
-                }
+                    && state.about_requested_at.is_none() =>
+            {
+                state.about_requested_at = Some(std::time::Instant::now());
             }
             calloop::channel::Event::Msg(UserEvent::OpenHomepage) => {
                 daemon::open_homepage();
