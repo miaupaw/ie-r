@@ -285,16 +285,14 @@ struct PersistedHistory {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum TrayIcon {
+    #[default]
     Color,     // full-color pixmap, empty icon_name (all tray hosts)
     Mono,      // empty pixmap, icon_name="ie-r-symbolic" (DE-themed, DE must support it)
     MonoWhite, // white pixmap, empty icon_name (dark panels)
     MonoBlack, // black pixmap, empty icon_name (light panels)
     None,      // no tray icon, SNI not registered
-}
-
-impl Default for TrayIcon {
-    fn default() -> Self { TrayIcon::Color }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -430,14 +428,13 @@ impl Config {
     #[cfg(windows)]
     fn get_config_path_windows() -> std::path::PathBuf {
         // Tier 1: portable — next to exe
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(exe_dir) = exe.parent() {
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(exe_dir) = exe.parent() {
                 let portable = exe_dir.join("config.toml");
                 if portable.exists() || is_dir_writable(exe_dir) {
                     return portable;
                 }
             }
-        }
 
         // Tier 2: HOME (current behavior)
         if let Ok(home) = std::env::var("HOME") {
@@ -463,7 +460,7 @@ impl Config {
             for idx in 1..=99 {
                 let backup_path = dir.join(format!("{}_broken_{:02}.toml", prefix, idx));
                 if !backup_path.exists() {
-                    if let Ok(_) = fs::rename(path, &backup_path) {
+                    if fs::rename(path, &backup_path).is_ok() {
                         log_step("Config", &format!("Broken {} moved to {:?}", prefix, backup_path));
                     }
                     return;
@@ -772,6 +769,6 @@ fn is_dir_writable(dir: &std::path::Path) -> bool {
             Err(_) => false,
         }
     } else {
-        dir.parent().map_or(false, is_dir_writable)
+        dir.parent().is_some_and(is_dir_writable)
     }
 }

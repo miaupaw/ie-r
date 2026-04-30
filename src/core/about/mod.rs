@@ -2,7 +2,6 @@
 ///
 /// Pure core: renders into a pixel buffer, knows nothing about Wayland/X11.
 /// The connector creates a surface of the appropriate type and calls render().
-
 use std::time::Instant;
 use crate::core::text::TextRenderer;
 use crate::core::overlay::primitives::{draw_rect, draw_filled_rect};
@@ -123,6 +122,7 @@ impl AboutApp {
         self.metrics.as_ref().unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render(&mut self, buf: &mut [u32], w: u32, h: u32, bg_buffer: &[u32], blur_buf_1: &mut Vec<u32>, blur_buf_2: &mut Vec<u32>, blur_radius: usize) {
         let elapsed_ms = self.birth_time.elapsed().as_millis() as u64;
         let t = elapsed_ms as f64 / 1000.0;
@@ -137,12 +137,11 @@ impl AboutApp {
         }
 
         let inv = ((1.0 - glass_breathe) * 256.0) as u32;
-        for i in 0..pixels {
-            let px = self.cached_blur[i];
-            let r = (((px >> 16) & 0xFF) * inv) >> 8;
-            let g = (((px >> 8) & 0xFF) * inv) >> 8;
-            let b = ((px & 0xFF) * inv) >> 8;
-            buf[i] = (r << 16) | (g << 8) | b;
+        for (buf_px, &cached_px) in buf.iter_mut().zip(self.cached_blur.iter()) {
+            let r = (((cached_px >> 16) & 0xFF) * inv) >> 8;
+            let g = (((cached_px >> 8) & 0xFF) * inv) >> 8;
+            let b = ((cached_px & 0xFF) * inv) >> 8;
+            *buf_px = (r << 16) | (g << 8) | b;
         }
 
         self.ensure_metrics(w, h);
@@ -216,9 +215,9 @@ impl AboutApp {
             self.text_renderer.draw_text_scaled(buf, w as usize, h as usize, cur_x, ty, "█", 0xFFFFFFFF, TITLE_SCALE, 1.0, 1.0, false, 0);
         }
         let slash_colors = [ACCENT_RED, 0x12FF0E, 0x00A2FF];
-        for i in 0..3 {
+        for (i, &color) in slash_colors.iter().enumerate() {
             let x = tx - (5.0 * slash_w) as i32 + (i as f32 * slash_w) as i32;
-            self.text_renderer.draw_text_scaled(buf, w as usize, h as usize, x, ty, "/", slash_colors[i], TITLE_SCALE, 1.0, 1.0, false, 0);
+            self.text_renderer.draw_text_scaled(buf, w as usize, h as usize, x, ty, "/", color, TITLE_SCALE, 1.0, 1.0, false, 0);
         }
 
         // 4. Hermes Scroller
@@ -241,7 +240,7 @@ impl AboutApp {
                 let edge_fade = (dist_to_top.min(dist_to_bot) / 40.0).min(1.0) as f32;
                 let (lw, _) = m.line_widths[i];
                 let sinus_x = (t * 3.0 + ly * 0.01).sin() * 15.0;
-                let color = if line.starts_with("//") { KEY_AMBER } else { 0xCCffffff };
+                let color = if line.starts_with("//") { KEY_AMBER } else { 0xCCFFFFFF };
                 self.text_renderer.draw_text_scaled(buf, w as usize, h as usize, ((w as f32 - lw) / 2.0) as i32 + sinus_x as i32, ly as i32, line, color, SCROLLER_SCALE, 1.0, text_flicker as f32 * edge_fade, false, 0);
             }
         }

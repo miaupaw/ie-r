@@ -2,7 +2,6 @@
 ///
 /// Pure stateless functions: set_pixel, draw_rect, draw_filled_rect.
 /// Used by other overlay modules to render UI elements.
-
 /// Safe pixel set (with bounds check)
 pub fn set_pixel(buffer: &mut [u32], width: usize, height: usize, x: i32, y: i32, color: u32) {
     if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
@@ -11,6 +10,7 @@ pub fn set_pixel(buffer: &mut [u32], width: usize, height: usize, x: i32, y: i32
 }
 
 /// Draw an empty rectangle (outline)
+#[allow(clippy::too_many_arguments)]
 pub fn draw_rect(
     buffer: &mut [u32],
     width: usize,
@@ -35,6 +35,7 @@ pub fn draw_rect(
 ///
 /// Optimization: bounds are checked once, then each row is filled
 /// via `slice.fill(color)` — memset-level performance (SIMD).
+#[allow(clippy::too_many_arguments)]
 pub fn draw_filled_rect(
     buffer: &mut [u32],
     width: usize,
@@ -59,6 +60,7 @@ pub fn draw_filled_rect(
 }
 
 /// Copies a rectangular region from background into canvas (row-by-row via memcpy).
+#[allow(clippy::too_many_arguments)]
 pub fn copy_region(
     canvas: &mut [u32],
     bg: &[u32],

@@ -190,23 +190,20 @@ impl Hud {
         // When the threat passes, the HUD doesn't pop up like a soulless script.
         // It waits a random 1.0–3.0 seconds, scanning the ether.
         let is_fully_hidden = self.offset_x <= HIDDEN_THRESHOLD;
-        if target == 0.0 && is_fully_hidden {
-            if self.departure_timer.is_none() {
+        if target == 0.0 && is_fully_hidden
+            && self.departure_timer.is_none() {
                 let elapsed_ms = self.birth_time.elapsed().as_millis() as u64;
                 let rand = (elapsed_ms % 2000) as f64 / 1000.0;
                 self.departure_timer = Some((Instant::now(), 1.0 + rand));
             }
-        }
 
         // While the timer is ticking, keep the HUD in place
-        if target == 0.0 {
-            if let Some((start, delay)) = self.departure_timer {
-                if start.elapsed().as_secs_f64() < delay {
+        if target == 0.0
+            && let Some((start, delay)) = self.departure_timer
+                && start.elapsed().as_secs_f64() < delay {
                     target = self.offset_x; // quietly waiting in the shelter...
                     needs_redraw = true;
                 }
-            }
-        }
 
         // --- Spring Animation ---
         let diff = target - self.offset_x;
@@ -251,6 +248,7 @@ impl Hud {
     /// **HUD rendering.**
     ///
     /// Returns dirty rect `(x, y, w, h)` if HUD was drawn, `None` if hidden.
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         canvas: &mut [u32],
@@ -411,6 +409,7 @@ impl Hud {
 // ==============================================================================
 
 /// HUD base layer: glass, borders, header, hotkey table, footer, scanlines.
+#[allow(clippy::too_many_arguments)]
 fn draw_base(
     buffer: &mut [u32],
     width: usize,
@@ -441,7 +440,7 @@ fn draw_base(
     );
 
     // 2. Borders + top accent
-    draw_rect(buffer, width, height, x, y, hud_w, hud_h, 0x1Affffff);
+    draw_rect(buffer, width, height, x, y, hud_w, hud_h, 0x1AFFFFFF);
     let top_accent_h = (2.0 * scale).max(1.0).round() as usize;
     draw_filled_rect(buffer, width, height, x, y, hud_w, top_accent_h, ACCENT_RED);
 
@@ -525,7 +524,7 @@ fn draw_base(
             draw_aa_triangle(buffer, width, height, current_x + (size + gap) * 2.0, start_y, size, TriangleDir::Down, KEY_AMBER);
             draw_aa_triangle(buffer, width, height, current_x + (size + gap) * 3.0, start_y, size, TriangleDir::Right, KEY_AMBER);
             
-            let triangles_w = ((size + gap) * 4.0 - gap).ceil() as f32;
+            let triangles_w = ((size + gap) * 4.0 - gap).ceil();
             current_x - (x as f32 + 55.0 * scale as f32).round() + triangles_w
         } else {
             text_renderer.draw_text_scaled(
@@ -571,7 +570,7 @@ fn draw_base(
         x + (40.0 * scale).round() as i32,
         footer_y - (10.0 * scale).round() as i32,
         (hud_w as i32 - (80.0 * scale).round() as i32) as usize,
-        1, 0x0Affffff,
+        1, 0x0AFFFFFF,
     );
 
     let footer_text = "IE-R v0.1.1 // DIGITAL SENSOR";
@@ -614,6 +613,7 @@ fn draw_base(
 }
 
 /// '///' breathing animation in the header (drawn on top of cache every frame).
+#[allow(clippy::too_many_arguments)]
 fn draw_realtime_accents(
     buffer: &mut [u32],
     width: usize,
@@ -712,9 +712,7 @@ fn apply_persistent_chroma(
 
             let mut history = [0u32; 32];
             let hist_len = h_split.min(32);
-            for i in 0..hist_len {
-                history[i] = buffer[row_idx + i];
-            }
+            history[..hist_len].copy_from_slice(&buffer[row_idx..row_idx + hist_len]);
             let mut hist_idx = 0usize;
 
             // Edge-Delta Luminance: uniform background (glass) yields delta ≈ 0 → untouched.

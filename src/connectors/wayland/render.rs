@@ -159,7 +159,7 @@ impl IEWaylandState {
             self.redraw(qh);
         }
         // Blink animation may set should_exit from within render().
-        if self.overlay_app.as_ref().map_or(false, |a| a.should_exit) {
+        if self.overlay_app.as_ref().is_some_and(|a| a.should_exit) {
             self.exit = true;
         }
     }
@@ -426,11 +426,10 @@ impl IEWaylandState {
     }
 
     pub fn close_about(&mut self) {
-        if let Some(about) = self.about_surface.take() {
-            if let Some(vp) = about.viewport {
+        if let Some(about) = self.about_surface.take()
+            && let Some(vp) = about.viewport {
                 vp.destroy();
             }
-        }
     }
 
     pub fn render_about(&mut self, qh: &QueueHandle<Self>) {

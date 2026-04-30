@@ -146,7 +146,7 @@ fn run_tray_thread(sender: EventSender, hwnd_store: Arc<AtomicIsize>, show_welco
         let cy = GetSystemMetrics(SM_CYSMICON);
         let hicon = LoadImageW(
             GetModuleHandleW(None).unwrap_or_default(),
-            PCWSTR(1 as *const u16), // MAKEINTRESOURCEW(1) — matches `1 ICON` in .rc
+            PCWSTR(std::ptr::dangling::<u16>()), // MAKEINTRESOURCEW(1) — matches `1 ICON` in .rc
             IMAGE_ICON,
             cx, cy,
             LR_SHARED,
@@ -332,20 +332,20 @@ unsafe fn show_context_menu(hwnd: HWND, _sender: &EventSender) {
 
         // ── Color history (flat list, newest first) ─────────────────
         for (i, hex) in config.history.colors.iter().enumerate() {
-            if i >= config.history.size as usize { break; }
+            if i >= config.history.size { break; }
             let id = IDM_HISTORY_BASE + i as u32;
             let wide: Vec<u16> = hex.encode_utf16().chain(std::iter::once(0)).collect();
             let _ = AppendMenuW(hmenu, MF_STRING, id as usize, PCWSTR(wide.as_ptr()));
 
             // Attach color swatch bitmap via MENUITEMINFOW.hbmpItem
             if let Some(hbm) = create_color_bitmap(hex, icon_size) {
-                let mut mii = MENUITEMINFOW {
+                let mii = MENUITEMINFOW {
                     cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
                     fMask: MIIM_BITMAP,
                     hbmpItem: hbm,
                     ..Default::default()
                 };
-                let _ = SetMenuItemInfoW(hmenu, id, false, &mut mii);
+                let _ = SetMenuItemInfoW(hmenu, id, false, &mii);
                 bitmaps.push(hbm);
             }
         }
@@ -459,7 +459,7 @@ unsafe fn create_color_bitmap(hex: &str, size: i32) -> Option<HBITMAP> {
                 biHeight: -size, // top-down
                 biPlanes: 1,
                 biBitCount: 32,
-                biCompression: BI_RGB.0 as u32,
+                biCompression: BI_RGB.0,
                 ..Default::default()
             },
             ..Default::default()
@@ -517,7 +517,7 @@ fn handle_menu_command(sender: &EventSender, id: u32) {
             let key = TEMPLATE_LABELS[idx].0;
             sender.send(UserEvent::SelectTemplate(key.to_string()));
         }
-        _ if id >= IDM_HISTORY_BASE && id < IDM_HISTORY_BASE + 100 =>
+        _ if (IDM_HISTORY_BASE..IDM_HISTORY_BASE + 100).contains(&id) =>
         {
             // Re-read config to get color at this index
             let config = Config::load(true);

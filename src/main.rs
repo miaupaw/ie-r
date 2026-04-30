@@ -283,8 +283,8 @@ fn run_wayland_daemon() -> Result<()> {
             }
 
             // Deferred About launch: wait for menus to disappear before capturing background
-            if let Some(t) = state.about_requested_at {
-                if t.elapsed() >= Duration::from_millis(150) {
+            if let Some(t) = state.about_requested_at
+                && t.elapsed() >= Duration::from_millis(150) {
                     state.about_requested_at = None;
                     if state.wayland.overlay_app.is_none() && state.wayland.about_surface.is_none() {
                         let hud_font = state.daemon.svc.hud_font_data.clone();
@@ -292,7 +292,6 @@ fn run_wayland_daemon() -> Result<()> {
                         state.wayland.launch_about(&state.qh, hud_font, dbus_conn);
                     }
                 }
-            }
 
             // --- Watchdog: single kick to bootstrap the render chain ---
             // Idle overlay (HUD off, no mouse) never calls render(), so the
@@ -582,8 +581,8 @@ fn check_and_kill_existing_instance() {
         let bus_name: zbus::names::WellKnownName = "org.kde.StatusNotifierItem.InstantEyedropper".try_into().unwrap();
         let bus_name_ref = zbus::names::BusName::WellKnown(bus_name.clone());
 
-        if let Ok(has_owner) = proxy.name_has_owner(bus_name_ref.as_ref()).await {
-            if has_owner {
+        if let Ok(has_owner) = proxy.name_has_owner(bus_name_ref.as_ref()).await
+            && has_owner {
                 log_info("Found existing instance. Asking it to quit politely...");
 
                 // Send the Quit command via D-Bus.
@@ -598,16 +597,14 @@ fn check_and_kill_existing_instance() {
                 // Wait for the old process to actually release the bus (up to 2 seconds).
                 for _ in 0..20 {
                     tokio::time::sleep(Duration::from_millis(100)).await;
-                    if let Ok(still_alive) = proxy.name_has_owner(bus_name_ref.as_ref()).await {
-                        if !still_alive {
+                    if let Ok(still_alive) = proxy.name_has_owner(bus_name_ref.as_ref()).await
+                        && !still_alive {
                             log_info("Old instance successfully terminated. Taking over...");
                             return;
                         }
-                    }
                 }
                 log_warn("Old instance didn't quit in time. Proceeding anyway, but resources might conflict.");
             }
-        }
     });
 }
 
@@ -619,7 +616,7 @@ fn main() -> Result<()> {
     // even through layers of wrappers and loaders.
     #[cfg(unix)]
     {
-        let ret = unsafe { libc::prctl(libc::PR_SET_NAME, "ie-r\0".as_ptr()) };
+        let ret = unsafe { libc::prctl(libc::PR_SET_NAME, c"ie-r".as_ptr()) };
         if ret != 0 {
             log_warn("prctl(PR_SET_NAME) failed — killall -SIGUSR1 ie-r may not work");
         }

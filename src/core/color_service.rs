@@ -28,6 +28,12 @@ pub struct ColorService {
     pub hud_font_data: std::sync::Arc<Vec<u8>>,
 }
 
+impl Default for ColorService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ColorService {
     pub fn new() -> Self {
         let config = Config::load(false);

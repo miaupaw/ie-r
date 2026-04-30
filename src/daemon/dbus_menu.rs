@@ -110,6 +110,7 @@ impl DBusMenu {
     // Called by the tray manager (KDE, GNOME, ...) on icon click.
     // Rebuilds the full tree each time (dbusmenu has no incremental update support).
     // Reads only from static caches — no disk reads.
+    #[allow(clippy::type_complexity)]
     fn get_layout(
         &self,
         _parent_id: i32,
@@ -274,32 +275,32 @@ impl DBusMenu {
         if event_id == "clicked" {
             match id {
                 1 => {
-                    let _ = self.proxy.send(UserEvent::LaunchOverlay(None));
+                    self.proxy.send(UserEvent::LaunchOverlay(None));
                 }
                 10 => {
-                    let _ = self.proxy.send(UserEvent::EditConfig);
+                    self.proxy.send(UserEvent::EditConfig);
                 }
                 11 => {
-                    let _ = self.proxy.send(UserEvent::Quit);
+                    self.proxy.send(UserEvent::Quit);
                 }
                 12 => {
-                    let _ = self.proxy.send(UserEvent::ToggleHUD);
+                    self.proxy.send(UserEvent::ToggleHUD);
                 }
                 13 => {
-                    let _ = self.proxy.send(UserEvent::ShowAbout);
+                    self.proxy.send(UserEvent::ShowAbout);
                 }
                 14 => {
-                    let _ = self.proxy.send(UserEvent::OpenHomepage);
+                    self.proxy.send(UserEvent::OpenHomepage);
                 }
                 _ => {
                     let map = self.dynamic_items.read().unwrap();
                     if let Some(value) = map.get(&id) {
                         if (200..300).contains(&id) {
                             // Template selector: value = template key (e.g. "html")
-                            let _ = self.proxy.send(UserEvent::SelectTemplate(value.clone()));
+                            self.proxy.send(UserEvent::SelectTemplate(value.clone()));
                         } else {
                             // Color history: value = hex color
-                            let _ = self.proxy.send(UserEvent::CopyFromHistory(value.clone()));
+                            self.proxy.send(UserEvent::CopyFromHistory(value.clone()));
                         }
                     }
                 }

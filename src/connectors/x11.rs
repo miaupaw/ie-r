@@ -311,11 +311,10 @@ impl X11OverlayWindow {
                     MouseButton::Left | MouseButton::Middle => {
                         let serial = button == MouseButton::Middle || self.shift_pressed;
                         self.app.handle_action(UserAction::PickColor { serial });
-                        if self.app.blink.is_some() {
-                            if let Some(window) = &self.window {
+                        if self.app.blink.is_some()
+                            && let Some(window) = &self.window {
                                 window.set_cursor(winit::window::CursorIcon::Default);
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -359,11 +358,10 @@ impl X11DaemonApp {
             log_info("Overlay already active. Simulating LMB click.");
             if let Some(ow) = &mut self.overlay {
                 ow.app.handle_action(UserAction::PickColor { serial: false });
-                if ow.app.blink.is_some() {
-                    if let Some(w) = &ow.window {
+                if ow.app.blink.is_some()
+                    && let Some(w) = &ow.window {
                         w.set_cursor(winit::window::CursorIcon::Default);
                     }
-                }
                 if let Some(w) = &ow.window {
                     w.request_redraw();
                 }
@@ -528,11 +526,10 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
             ow.handle_window_event(event);
 
             // If animation is active, ask Winit to redraw the window immediately.
-            if ow.app.needs_redraw {
-                if let Some(w) = &ow.window {
+            if ow.app.needs_redraw
+                && let Some(w) = &ow.window {
                     w.request_redraw();
                 }
-            }
 
             if ow.app.should_exit {
                 let color_deck = ow.app.take_color_deck();
@@ -541,12 +538,11 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
             }
         }
 
-        if should_close {
-            if let Some(mut ow) = self.overlay.take() {
+        if should_close
+            && let Some(mut ow) = self.overlay.take() {
                 ow.destroy_window();
                 log_info("Overlay closed.");
             }
-        }
     }
 
     fn device_event(
@@ -558,8 +554,8 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
         use winit::event::DeviceEvent;
         use winit::keyboard::{KeyCode, PhysicalKey};
 
-        if let Some(ow) = &mut self.overlay {
-            if let DeviceEvent::Key(key) = event {
+        if let Some(ow) = &mut self.overlay
+            && let DeviceEvent::Key(key) = event {
                 let mut needs_wake = false;
                 match key.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => {
@@ -667,22 +663,20 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
                     PhysicalKey::Code(KeyCode::Enter) | PhysicalKey::Code(KeyCode::NumpadEnter) => {
                         if key.state == ElementState::Pressed {
                             ow.app.handle_action(UserAction::PickColor { serial: ow.shift_pressed });
-                            if ow.app.blink.is_some() {
-                                if let Some(w) = &ow.window {
+                            if ow.app.blink.is_some()
+                                && let Some(w) = &ow.window {
                                     w.set_cursor(winit::window::CursorIcon::Default);
                                 }
-                            }
                             needs_wake = true;
                         }
                     }
                     PhysicalKey::Code(KeyCode::Space) => {
                         if key.state == ElementState::Pressed {
                             ow.app.handle_action(UserAction::PickColor { serial: true });
-                            if ow.app.blink.is_some() {
-                                if let Some(w) = &ow.window {
+                            if ow.app.blink.is_some()
+                                && let Some(w) = &ow.window {
                                     w.set_cursor(winit::window::CursorIcon::Default);
                                 }
-                            }
                             needs_wake = true;
                         }
                     }
@@ -690,13 +684,11 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
                 }
 
                 // "Kick" the event loop to process changes immediately.
-                if needs_wake {
-                    if let Some(w) = &ow.window {
+                if needs_wake
+                    && let Some(w) = &ow.window {
                         w.request_redraw();
                     }
-                }
             }
-        }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
@@ -711,8 +703,8 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
             self.launch_overlay(event_loop, None);
         }
 
-        if let Some(ow) = &mut self.overlay {
-            if ow.app.needs_redraw {
+        if let Some(ow) = &mut self.overlay
+            && ow.app.needs_redraw {
                 if let Some(w) = &ow.window {
                     w.request_redraw();
                 }
@@ -720,7 +712,6 @@ impl ApplicationHandler<UserEvent> for X11DaemonApp {
                 event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(8)));
                 return;
             }
-        }
 
         let next_frame_time =
             Instant::now() + Duration::from_millis(self.svc.config.system.poll_interval_ms);

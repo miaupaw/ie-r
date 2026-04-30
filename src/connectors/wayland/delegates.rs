@@ -67,7 +67,7 @@ impl CompositorHandler for IEWaylandState {
         _time: u32,
     ) {
         // About window — redraw for animations.
-        if self.about_surface.as_ref().map_or(false, |a| *a.surface.wl_surface() == *_surface) {
+        if self.about_surface.as_ref().is_some_and(|a| *a.surface.wl_surface() == *_surface) {
             self.render_about(qh);
             return;
         }
@@ -82,11 +82,10 @@ impl CompositorHandler for IEWaylandState {
             self.redraw(qh);
         }
         // Blink animation may set should_exit from within render().
-        if let Some(app) = &self.overlay_app {
-            if app.should_exit {
+        if let Some(app) = &self.overlay_app
+            && app.should_exit {
                 self.exit = true;
             }
-        }
     }
     fn surface_enter(
         &mut self,
@@ -96,11 +95,10 @@ impl CompositorHandler for IEWaylandState {
         _output: &wl_output::WlOutput,
     ) {
         // About window entered a monitor — update background for glassmorphism.
-        if let Some(about) = &mut self.about_surface {
-            if about.surface.wl_surface() == _surface {
+        if let Some(about) = &mut self.about_surface
+            && about.surface.wl_surface() == _surface {
                 about.update_bg_for_output(_output);
             }
-        }
     }
     fn surface_leave(
         &mut self,
@@ -138,7 +136,7 @@ impl LayerShellHandler for IEWaylandState {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
         // Compositor is closing a specific Layer Shell surface (logout, hotplug, etc.).
         // If it's the About window — close it gracefully, don't kill the whole daemon.
-        if self.about_surface.as_ref().map_or(false, |a| {
+        if self.about_surface.as_ref().is_some_and(|a| {
             if let OverlaySurface::Layer(l) = &a.surface { l == _layer } else { false }
         }) {
             self.close_about();
@@ -155,7 +153,7 @@ impl LayerShellHandler for IEWaylandState {
         _serial: u32,
     ) {
         // About window configure → render static content
-        if self.about_surface.as_ref().map_or(false, |a| {
+        if self.about_surface.as_ref().is_some_and(|a| {
             if let OverlaySurface::Layer(l) = &a.surface { l == layer } else { false }
         }) {
             self.render_about(qh);
@@ -198,13 +196,12 @@ impl SeatHandler for IEWaylandState {
         seat: wl_seat::WlSeat,
         capability: Capability,
     ) {
-        if capability == Capability::Keyboard && self.keyboard.is_none() {
-            if let Ok(keyboard) = self.seat_state.get_keyboard(qh, &seat, None) {
+        if capability == Capability::Keyboard && self.keyboard.is_none()
+            && let Ok(keyboard) = self.seat_state.get_keyboard(qh, &seat, None) {
                 self.keyboard = Some(keyboard);
             }
-        }
-        if capability == Capability::Pointer && self.pointer.is_none() {
-            if let Some(compositor) = &self.compositor {
+        if capability == Capability::Pointer && self.pointer.is_none()
+            && let Some(compositor) = &self.compositor {
                 let surface = compositor.create_surface(qh);
                 if let Ok(pointer) = self.seat_state.get_pointer_with_theme(
                     qh,
@@ -216,7 +213,6 @@ impl SeatHandler for IEWaylandState {
                     self.pointer = Some(pointer);
                 }
             }
-        }
     }
     fn remove_capability(
         &mut self,
@@ -256,7 +252,7 @@ impl WindowHandler for IEWaylandState {
     fn request_close(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _window: &Window) {
         // Compositor requests closing the xdg_toplevel (Alt+F4, decorations, logout).
         // If it's the About window — close it gracefully, don't kill the whole daemon.
-        if self.about_surface.as_ref().map_or(false, |a| {
+        if self.about_surface.as_ref().is_some_and(|a| {
             if let OverlaySurface::Xdg(w) = &a.surface { w == _window } else { false }
         }) {
             self.close_about();
@@ -273,7 +269,7 @@ impl WindowHandler for IEWaylandState {
         _serial: u32,
     ) {
         // About window configure → render static content
-        if self.about_surface.as_ref().map_or(false, |a| {
+        if self.about_surface.as_ref().is_some_and(|a| {
             if let OverlaySurface::Xdg(w) = &a.surface { w == window } else { false }
         }) {
             self.render_about(qh);
@@ -290,14 +286,13 @@ impl WindowHandler for IEWaylandState {
         let mut size_changed = false;
         if let Some(overlay) = self.overlays.iter_mut().find(|o| {
             if let OverlaySurface::Xdg(w) = &o.surface { w == window } else { false }
-        }) {
-            if overlay.width != new_w || overlay.height != new_h {
+        })
+            && (overlay.width != new_w || overlay.height != new_h) {
                 overlay.width = new_w;
                 overlay.height = new_h;
                 overlay.committed = false;
                 size_changed = true;
             }
-        }
 
         if self.first_configure {
             // Consume the activation token: tell GNOME Shell the window has appeared.

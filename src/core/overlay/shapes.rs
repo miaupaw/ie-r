@@ -8,6 +8,7 @@ pub enum TriangleDir {
 
 /// Draws an anti-aliased triangle using 4x4 SSAA.
 /// CPU math, 0 allocations, perfect edges with no external dependencies.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_aa_triangle(
     buffer: &mut [u32],
     buf_w: usize,
@@ -85,6 +86,7 @@ pub fn draw_aa_triangle(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_color_deck(
     buffer: &mut [u32],
     width: usize,

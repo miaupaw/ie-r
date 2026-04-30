@@ -13,7 +13,6 @@
 ///   {c},{m},{y},{k}     — CMYK % (0-100)
 ///
 /// All other characters pass through as-is.
-
 /// Generates a zero-padded string for values up to 999.
 /// Injects control codes:
 ///   \x01 — renderer directive: dim on

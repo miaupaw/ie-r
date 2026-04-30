@@ -1,6 +1,5 @@
 /// Simple internal ANSI color engine for a beautiful terminal experience.
 /// No extra dependencies, just pure escape codes.
-
 pub enum Color {
     Red,
     Green,
@@ -129,7 +128,7 @@ pub fn print_logo() {
         |_____|                      |__|  |__|"#;
 
     let tag = format!("[{: >10}]", "Hello");
-    println!("{}", instant.trim_start_matches(|c| c == '\n' || c == '\r').cyan().bold());
-    println!("{}", eyedropper.trim_start_matches(|c| c == '\n' || c == '\r').cyan().bold());
+    println!("{}", instant.trim_start_matches(['\n', '\r']).cyan().bold());
+    println!("{}", eyedropper.trim_start_matches(['\n', '\r']).cyan().bold());
     println!("\n{} {} {}", tag.bold(), "Instant Eyedropper Reborn".green().bold(), env!("CARGO_PKG_VERSION").gray());
 }

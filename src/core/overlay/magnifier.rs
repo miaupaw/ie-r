@@ -294,8 +294,8 @@ impl Magnifier {
         let final_text_outer_width = if target_text_w > 0.0 { target_text_w.ceil() as usize + (MARGIN * 2) } else { 0 };
         let final_total_width = if target_text_w > 0.0 { final_outer_width + final_text_outer_width - MARGIN } else { final_outer_width };
 
-        let mut target_x = mx + config.magnifier.offset_x as i32;
-        let mut target_y = my - (final_outer_height as i32 / 2) + config.magnifier.offset_y as i32;
+        let mut target_x = mx + config.magnifier.offset_x;
+        let mut target_y = my - (final_outer_height as i32 / 2) + config.magnifier.offset_y;
 
         // Clamp to current monitor bounds (Windows multi-monitor) or full canvas (Wayland per-output).
         let (mon_x0, mon_y0, mon_x1, mon_y1) = match ctx.monitor_rect {
@@ -493,6 +493,7 @@ fn matrix_rain_color(src_x: i32, src_y: i32, time: f32) -> u32 {
 
 /// Draws the aim marker over the zoomed grid.
 /// aim_size=1 → dot (1×1 grid pixel), aim_size>1 → NxN frame.
+#[allow(clippy::too_many_arguments)]
 fn draw_aim_marker(
     buffer: &mut [u32],
     width: usize,
@@ -525,6 +526,7 @@ fn draw_aim_marker(
 
 /// At `pixel_scale > 20` draws a grid over pixels (only at high zoom levels).
 /// Returns `true` if at least one pixel was out of bounds (for the `matrix_active` flag).
+#[allow(clippy::too_many_arguments)]
 fn draw_zoomed_pixels(
     buffer: &mut [u32],
     width: usize,
@@ -584,10 +586,12 @@ fn draw_zoomed_pixels(
 /// Centering is non-trivial due to font metric quirks:
 ///   - `top_offset` = distance from bbox top to baseline (font-dependent)
 ///   - `ascent` = height of glyphs above baseline
+///
 /// Formula: `draw_y = box_center_y - top_offset - (total_height / 2) - ascent + 2`
 /// The `+2` correction is an empirical offset for optical alignment.
 ///
 /// When `center_x = true`, each line is horizontally centered within `box_w`.
+#[allow(clippy::too_many_arguments)]
 fn draw_hex_text(
     buffer: &mut [u32],
     width: usize,

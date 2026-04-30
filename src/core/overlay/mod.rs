@@ -415,6 +415,7 @@ impl OverlayApp {
                 // Renderer recalculates metrics without re-reading from disk.
                 let current = self.config.font.size;
                 
+                #[allow(clippy::if_same_then_else)]
                 let new_size = if current == 0.0 && delta > 0 {
                     10.0 // Wake from collapsed mode (Collapse -> Show)
                 } else if current == 10.0 && delta < 0 {
@@ -673,8 +674,8 @@ impl OverlayApp {
             let rate = if repeat.is_jump { 120 } else { 30 }; // Interval between steps (ms)
             let (rdx, rdy, is_jump) = (repeat.dx, repeat.dy, repeat.is_jump);
 
-            if elapsed > delay && repeat.last_repeat.elapsed().as_millis() as u64 >= rate {
-                if let Some((x, y)) = self.mouse_pos {
+            if elapsed > delay && repeat.last_repeat.elapsed().as_millis() as u64 >= rate
+                && let Some((x, y)) = self.mouse_pos {
                     if is_jump {
                         let target = self.find_jump_target(x as u32, y as u32, rdx, rdy);
                         self.mouse_pos = Some(target);
@@ -686,7 +687,6 @@ impl OverlayApp {
                     // Safely update after releasing the immutable borrow.
                     self.repeat_tracker.as_mut().unwrap().last_repeat = Instant::now();
                 }
-            }
         }
 
         // =====================================================================
@@ -851,7 +851,7 @@ impl OverlayApp {
                         w,
                         h,
                         mag_start_x,
-                        mag_start_y as i32 + mag_h as i32 + 2,
+                        mag_start_y + mag_h as i32 + 2,
                         mag_w,
                         &self.color_deck,
                         border_color,

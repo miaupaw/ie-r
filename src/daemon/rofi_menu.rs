@@ -6,7 +6,6 @@
 ///
 /// Supports any dmenu-compatible tool via `menu_command` in config.
 /// If unset, auto-detects: rofi → wofi → fuzzel.
-
 use super::UserEvent;
 use super::event_sender::EventSender;
 use crate::core::terminal::log_error;
@@ -176,13 +175,13 @@ fn resolve_action(selection: &str, entries: &[MenuEntry]) -> Option<Action> {
 
 fn dispatch_action(proxy: &EventSender, action: Action) {
     match action {
-        Action::History(hex)  => { let _ = proxy.send(UserEvent::CopyFromHistory(hex)); }
-        Action::Template(key) => { let _ = proxy.send(UserEvent::SelectTemplate(key)); }
-        Action::ToggleHUD     => { let _ = proxy.send(UserEvent::ToggleHUD); }
-        Action::EditConfig    => { let _ = proxy.send(UserEvent::EditConfig); }
-        Action::About         => { let _ = proxy.send(UserEvent::ShowAbout); }
-        Action::Homepage      => { let _ = proxy.send(UserEvent::OpenHomepage); }
-        Action::Quit          => { let _ = proxy.send(UserEvent::Quit); }
+        Action::History(hex)  => { proxy.send(UserEvent::CopyFromHistory(hex)); }
+        Action::Template(key) => { proxy.send(UserEvent::SelectTemplate(key)); }
+        Action::ToggleHUD     => { proxy.send(UserEvent::ToggleHUD); }
+        Action::EditConfig    => { proxy.send(UserEvent::EditConfig); }
+        Action::About         => { proxy.send(UserEvent::ShowAbout); }
+        Action::Homepage      => { proxy.send(UserEvent::OpenHomepage); }
+        Action::Quit          => { proxy.send(UserEvent::Quit); }
     }
 }
 

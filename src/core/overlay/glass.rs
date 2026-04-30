@@ -2,9 +2,9 @@
 /// Implementation of frosted glass effect via optimized Box Blur (O(N))
 /// with a two-pass strategy (horizontal + vertical) and zero-alloc
 /// via pre-sized scratchpads.
-
 /// Render frosted glass with blur and semi-transparent tint.
 /// Uses provided scratchpad buffers for zero-alloc operation.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_frosted_rect(
     canvas: &mut [u32],
     width: usize,

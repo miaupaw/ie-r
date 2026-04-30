@@ -3,7 +3,6 @@
 /// Pure mapper: no business logic, only converts hardware signals
 /// (keysym, pointer event) into commands for OverlayApp via `self.dispatch()`.
 /// All coordinate math is delegated to Oracle.
-
 use smithay_client_toolkit::seat::{
     keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
     pointer::{CursorIcon, PointerEvent, PointerEventKind, PointerHandler},
@@ -42,11 +41,10 @@ impl KeyboardHandler for IEWaylandState {
         _: u32,
     ) {
         // If focus leaves the About window — close it.
-        if let Some(about) = &self.about_surface {
-            if about.surface.wl_surface() == surface {
+        if let Some(about) = &self.about_surface
+            && about.surface.wl_surface() == surface {
                 self.close_about();
             }
-        }
     }
     fn press_key(
         &mut self,
@@ -138,11 +136,10 @@ impl KeyboardHandler for IEWaylandState {
             _ => None,
         };
 
-        if let Some(act) = action {
-            if let Some(app) = &mut self.overlay_app {
+        if let Some(act) = action
+            && let Some(app) = &mut self.overlay_app {
                 app.handle_action(act);
             }
-        }
     }
     fn update_modifiers(
         &mut self,
@@ -387,22 +384,20 @@ impl PointerHandler for IEWaylandState {
                         // Middle and Shift+Left are always serial; plain Left is the final pick.
                         let serial = mask == 0x112 || self.input.shift;
                         self.dispatch(UserAction::PickColor { serial });
-                        if self.overlay_app.as_ref().map_or(false, |a| a.blink.is_some()) {
-                            if let Some(pointer) = &self.pointer {
+                        if self.overlay_app.as_ref().is_some_and(|a| a.blink.is_some())
+                            && let Some(pointer) = &self.pointer {
                                 let _ = pointer.set_cursor(_conn, CursorIcon::Default);
                             }
-                        }
                     }
 
                     if self.needs_redraw {
                         self.redraw(qh);
                     }
                     // Blink animation may set should_exit from within render().
-                    if let Some(app) = &self.overlay_app {
-                        if app.should_exit {
+                    if let Some(app) = &self.overlay_app
+                        && app.should_exit {
                             self.exit = true;
                         }
-                    }
                 }
                 PointerEventKind::Axis { vertical, .. } => {
                     // Wayland sends discrete (mouse wheel, steps) or continuous (touchpad, pixels).

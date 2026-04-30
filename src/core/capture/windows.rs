@@ -198,7 +198,7 @@ pub fn capture_gdi() -> Result<PhysicalCanvas> {
                 biHeight: -(height as i32), // negative = top-down DIB
                 biPlanes: 1,
                 biBitCount: 32,
-                biCompression: BI_RGB.0 as u32,
+                biCompression: BI_RGB.0,
                 ..Default::default()
             },
             ..Default::default()

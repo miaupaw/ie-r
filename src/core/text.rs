@@ -35,6 +35,7 @@ impl TextRenderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_text_scaled(
         &self,
         buffer: &mut [u32],
@@ -217,8 +218,8 @@ pub fn load_hud_font(db: &Database) -> Vec<u8> {
         }
     }
 
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent() {
             let candidates = [
                 dir.join("fonts").join(FILENAME),
                 dir.join("..").join("share").join("ie-r").join("fonts").join(FILENAME),
@@ -230,17 +231,14 @@ pub fn load_hud_font(db: &Database) -> Vec<u8> {
                 }
             }
         }
-    }
 
     let query = Query { families: &[Family::Name("JetBrains Mono")], ..Default::default() };
-    if let Some(id) = db.query(&query) {
-        if let Some((Source::File(path), _)) = db.face_source(id) {
-            if let Ok(data) = fs::read(path) {
+    if let Some(id) = db.query(&query)
+        && let Some((Source::File(path), _)) = db.face_source(id)
+            && let Ok(data) = fs::read(path) {
                 log_step("Font", "HUD font: JetBrains Mono from system fonts");
                 return data;
             }
-        }
-    }
 
     Vec::new()
 }
@@ -252,42 +250,36 @@ pub fn find_best_font(db: &Database, preferred: &str, elite_list: &[&str]) -> Ve
         families: &[Family::Name(preferred)],
         ..Default::default()
     };
-    if let Some(id) = db.query(&query) {
-        if let Some((Source::File(path), _)) = db.face_source(id) {
-            if let Ok(data) = fs::read(path) {
+    if let Some(id) = db.query(&query)
+        && let Some((Source::File(path), _)) = db.face_source(id)
+            && let Ok(data) = fs::read(path) {
                 log_step("Font", &format!("Found preferred match: {}", preferred));
                 return data;
             }
-        }
-    }
 
     for name in elite_list {
         let query = Query {
             families: &[Family::Name(name)],
             ..Default::default()
         };
-        if let Some(id) = db.query(&query) {
-            if let Some((Source::File(path), _)) = db.face_source(id) {
-                if let Ok(data) = fs::read(path) {
+        if let Some(id) = db.query(&query)
+            && let Some((Source::File(path), _)) = db.face_source(id)
+                && let Ok(data) = fs::read(path) {
                     log_step("Font", &format!("Found best match from elite: {}", name));
                     return data;
                 }
-            }
-        }
     }
 
     let fallback_query = Query {
         families: &[Family::Monospace],
         ..Default::default()
     };
-    if let Some(id) = db.query(&fallback_query) {
-        if let Some((Source::File(path), _)) = db.face_source(id) {
-            if let Ok(data) = fs::read(path) {
+    if let Some(id) = db.query(&fallback_query)
+        && let Some((Source::File(path), _)) = db.face_source(id)
+            && let Ok(data) = fs::read(path) {
                 log_step("Font", "Using system generic Monospace");
                 return data;
             }
-        }
-    }
 
     Vec::new()
 }

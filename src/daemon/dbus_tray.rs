@@ -133,7 +133,7 @@ impl TrayItem {
     // Primary click (Left Click) -> Launch Overlay
     fn activate(&self, x: i32, y: i32) {
         log_step("DBus", &format!("Activate (Left Click) at {}, {}", x, y));
-        let _ = self.proxy.send(UserEvent::LaunchOverlay(Some((x, y))));
+        self.proxy.send(UserEvent::LaunchOverlay(Some((x, y))));
     }
 
     // Secondary click (Right Click) -> Quit / Menu
@@ -162,7 +162,7 @@ impl TrayItem {
     // Explicit polite shutdown method (used by new instances)
     fn quit(&self) {
         log_info("Received polite Quit request from new instance. Shutting down...");
-        let _ = self.proxy.send(UserEvent::Quit);
+        self.proxy.send(UserEvent::Quit);
     }
 
     // Signals (required by spec)

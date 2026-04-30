@@ -89,7 +89,7 @@ fn run_about_window(font_data: Arc<Vec<u8>>) -> Result<()> {
                 biHeight: -h, // top-down
                 biPlanes: 1,
                 biBitCount: 32,
-                biCompression: BI_RGB.0 as u32,
+                biCompression: BI_RGB.0,
                 ..Default::default()
             },
             ..Default::default()
@@ -169,7 +169,7 @@ unsafe fn capture_screen_region(x: i32, y: i32, w: i32, h: i32) -> Vec<u32> {
                 biHeight: -h,
                 biPlanes: 1,
                 biBitCount: 32,
-                biCompression: BI_RGB.0 as u32,
+                biCompression: BI_RGB.0,
                 ..Default::default()
             },
             ..Default::default()
@@ -282,11 +282,10 @@ unsafe extern "system" fn about_wnd_proc(
                 let state = &*ptr;
                 let x = (lparam.0 & 0xFFFF) as i16 as i32;
                 let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
-                if let Some((ux, uy, uw, uh)) = state.app.url_bounds {
-                    if x >= ux && x <= ux + uw && y >= uy && y <= uy + uh {
+                if let Some((ux, uy, uw, uh)) = state.app.url_bounds
+                    && x >= ux && x <= ux + uw && y >= uy && y <= uy + uh {
                         crate::daemon::open_homepage();
                     }
-                }
             }
             LRESULT(0)
         }
