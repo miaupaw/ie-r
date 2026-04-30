@@ -71,6 +71,7 @@ let
   # NSIS installer — produces ie-r-setup-vVERSION.exe
   installer = {
     type = "app";
+    meta.description = "Build Windows NSIS installer (ie-r-setup-vVERSION.exe)";
     program = let
       script = pkgs.writeShellScriptBin "windows-installer-ie-r" '' # bash
           echo -e "\033[1;32m📦 Building IE-R Windows Installer...\033[0m"
@@ -95,6 +96,7 @@ let
   # Portable bundle — produces ie-r-portable-vVERSION.zip
   bundle = {
     type = "app";
+    meta.description = "Build Windows portable bundle (ie-r-portable-vVERSION.zip)";
     program = let
       script = pkgs.writeShellScriptBin "windows-bundle-ie-r" '' # bash
           echo -e "\033[1;32m🪟 Building IE-R Windows Portable...\033[0m"

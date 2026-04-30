@@ -85,8 +85,8 @@
 
         # ── Commands & Apps ──────────────────────────────────────────────────
         apps.${system} = {
-            default  = { type = "app"; program = "${self.packages.${system}.default}/bin/ie-r"; };
-            appimage = { type = "app"; program = "${self.packages.${system}.appimage}/ie-r-v${version}-x86_64.AppImage"; };
+            default  = { type = "app"; program = "${self.packages.${system}.default}/bin/ie-r"; meta.description = "Run IE-R color picker"; };
+            appimage = { type = "app"; program = "${self.packages.${system}.appimage}/ie-r-v${version}-x86_64.AppImage"; meta.description = "Build and run IE-R AppImage"; };
 
             # Windows installer — run with: nix run .#windows-installer
             # Self-contained: builds exe + assembles bundle + runs NSIS

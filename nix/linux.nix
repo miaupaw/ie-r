@@ -224,6 +224,7 @@ let
   # so we copy + chmod 755 before zipping).
   bundle = {
     type = "app";
+    meta.description = "Build Linux portable bundle (ie-r-vVERSION.zip)";
     program = let
       script = pkgs.writeShellScriptBin "bundle-ie-r" '' # bash
           echo -e "\033[1;32m🚀 Starting Divine Distribution...\033[0m"
