@@ -353,10 +353,11 @@ impl IEWaylandState {
             let name = info.as_ref().and_then(|i| i.name.clone()).unwrap_or_default();
             let logical_pos = info.as_ref().and_then(|i| i.logical_position).unwrap_or((0, 0));
             let logical_w = info.as_ref().and_then(|i| i.logical_size).map(|s| s.0).unwrap_or(0);
+            let logical_h = info.as_ref().and_then(|i| i.logical_size).map(|s| s.1).unwrap_or(0);
             let transform = info.as_ref()
                 .map(|i| i.transform)
                 .unwrap_or(wayland_client::protocol::wl_output::Transform::Normal);
-            OutputMeta { output: o, name, logical_pos, logical_w, transform }
+            OutputMeta { output: o, name, logical_pos, logical_w, logical_h, transform }
         }).collect();
 
         let screencopy = match (&self.screencopy_manager, &self.shm) {

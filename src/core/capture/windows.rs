@@ -158,6 +158,8 @@ unsafe fn capture_output_dxgi(
             capture: ScreenCapture { xrgb_buffer, width, height },
             scale: 1.0,
             logical_pos: (rect.left, rect.top),
+            logical_w: width as i32,
+            logical_h: height as i32,
         })
     }
 }

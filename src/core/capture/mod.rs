@@ -13,7 +13,7 @@ pub use portal::capture_screen;
 
 use anyhow::Result;
 #[cfg(unix)]
-use crate::core::terminal::log_warn;
+use crate::core::terminal::{log_step, log_warn};
 #[cfg(unix)]
 use wayland_client::protocol::wl_output;
 
@@ -43,6 +43,11 @@ pub struct MonitorTile {
     pub scale: f64,
     /// Logical position of this monitor in compositor space.
     pub logical_pos: (i32, i32),
+    /// Logical (post-transform) dimensions reported by the compositor.
+    /// Stored verbatim so cross-tile probes don't have to reconstruct them
+    /// from `capture.width / scale` (which round-trips through f64).
+    pub logical_w: i32,
+    pub logical_h: i32,
     #[cfg(unix)]
     pub transform: wl_output::Transform,
 }
@@ -56,6 +61,7 @@ impl MonitorTile {
         output: wayland_client::protocol::wl_output::WlOutput,
         logical_pos: (i32, i32),
         logical_w: i32,
+        logical_h: i32,
         transform: wl_output::Transform,
     ) -> Self {
         let capture = apply_transform(capture, transform);
@@ -64,7 +70,7 @@ impl MonitorTile {
         } else {
             1.0
         };
-        Self { capture, output: Some(output), scale, logical_pos, transform }
+        Self { capture, output: Some(output), scale, logical_pos, logical_w, logical_h, transform }
     }
 }
 
@@ -99,12 +105,16 @@ impl PhysicalCanvas {
     /// Create a canvas from a single full-desktop capture (Portal, X11, KWin).
     #[cfg(unix)]
     pub fn from_single(capture: ScreenCapture, output: Option<wayland_client::protocol::wl_output::WlOutput>) -> Self {
+        let logical_w = capture.width as i32;
+        let logical_h = capture.height as i32;
         Self {
             tiles: vec![MonitorTile {
                 capture,
                 output,
                 scale: 1.0,
                 logical_pos: (0, 0),
+                logical_w,
+                logical_h,
                 transform: wl_output::Transform::Normal,
             }],
             active_idx: 0,
@@ -114,11 +124,15 @@ impl PhysicalCanvas {
     /// Create a canvas from a single full-desktop capture (Windows / headless).
     #[cfg(windows)]
     pub fn from_single(capture: ScreenCapture) -> Self {
+        let logical_w = capture.width as i32;
+        let logical_h = capture.height as i32;
         Self {
             tiles: vec![MonitorTile {
                 capture,
                 scale: 1.0,
                 logical_pos: (0, 0),
+                logical_w,
+                logical_h,
             }],
             active_idx: 0,
         }
@@ -129,7 +143,7 @@ impl PhysicalCanvas {
     /// the compositor's logical space to find the correct adjacent physical pixel.
     #[inline]
     pub fn sample(&self, local_x: i32, local_y: i32) -> Option<u32> {
-        let active = &self.tiles[self.active_idx];
+        let active = self.active();
 
         // Fast path: point is inside the active tile
         if local_x >= 0 && (local_x as u32) < active.capture.width &&
@@ -144,13 +158,9 @@ impl PhysicalCanvas {
         let logical_y = active.logical_pos.1 + (local_y as f64 / active.scale).floor() as i32;
 
         for tile in &self.tiles {
-            // Reconstruct logical dimensions of this tile
-            let tile_log_w = (tile.capture.width as f64 / tile.scale).round() as i32;
-            let tile_log_h = (tile.capture.height as f64 / tile.scale).round() as i32;
-
             // Checking if the absolute logical pos hits this tile's logical box
-            if logical_x >= tile.logical_pos.0 && logical_x < tile.logical_pos.0 + tile_log_w &&
-               logical_y >= tile.logical_pos.1 && logical_y < tile.logical_pos.1 + tile_log_h {
+            if logical_x >= tile.logical_pos.0 && logical_x < tile.logical_pos.0 + tile.logical_w &&
+               logical_y >= tile.logical_pos.1 && logical_y < tile.logical_pos.1 + tile.logical_h {
 
                 // Translate back to the target tile's local physical pixels
                 let target_local_log_x = logical_x - tile.logical_pos.0;
@@ -194,100 +204,79 @@ impl PhysicalCanvas {
     }
 
     /// The tile where the overlay surface lives.
+    /// Saturates to tile 0 if `active_idx` is out of range — `tiles` is
+    /// guaranteed non-empty by every public constructor, so this never panics.
     pub fn active(&self) -> &MonitorTile {
-        &self.tiles[self.active_idx]
+        self.tiles.get(self.active_idx).unwrap_or(&self.tiles[0])
     }
 }
 
+/// Apply a Wayland output transform to an XRGB capture.
+///
+/// Each `wl_output::Transform` is decomposed into 3 booleans (whether dst dims
+/// are rotated, whether each axis is reversed). Const generics monomorphize
+/// the inner loop per variant — branches collapse at compile time, so the
+/// hot path is identical to a hand-specialized rotation kernel.
 #[cfg(unix)]
 fn apply_transform(capture: ScreenCapture, transform: wl_output::Transform) -> ScreenCapture {
+    use wl_output::Transform as T;
+    match transform {
+        T::Normal     => capture,
+        T::Flipped    => rotate_xrgb::<false, true,  false>(capture),
+        T::_180       => rotate_xrgb::<false, true,  true >(capture),
+        T::Flipped180 => rotate_xrgb::<false, false, true >(capture),
+        T::_90        => rotate_xrgb::<true,  true,  false>(capture),
+        T::_270       => rotate_xrgb::<true,  false, true >(capture),
+        T::Flipped90  => rotate_xrgb::<true,  true,  true >(capture),
+        T::Flipped270 => rotate_xrgb::<true,  false, false>(capture),
+        _ => capture,
+    }
+}
+
+/// Rotation/flip kernel parametrized at compile time:
+///   * `SWAP_DIMS` — output width/height are swapped (90°/270° rotations)
+///   * `COL_FLIP`  — destination column index is reversed
+///   * `ROW_FLIP`  — destination row index is reversed
+///
+/// All `if` checks below are on const generic params, so LLVM strips them
+/// and emits 8 specialized loops (one per call site in `apply_transform`).
+#[cfg(unix)]
+#[inline]
+fn rotate_xrgb<const SWAP_DIMS: bool, const COL_FLIP: bool, const ROW_FLIP: bool>(
+    capture: ScreenCapture,
+) -> ScreenCapture {
     let src_w = capture.width as usize;
     let src_h = capture.height as usize;
     let src = &capture.xrgb_buffer;
+    let (dst_w, dst_h) = if SWAP_DIMS { (src_h, src_w) } else { (src_w, src_h) };
+    let mut dst = vec![0u32; dst_w * dst_h];
 
-    match transform {
-        wl_output::Transform::Normal => capture,
-
-        wl_output::Transform::_90 => {
-            let dst_w = src_h;
-            let dst_h = src_w;
-            let mut dst = vec![0u32; dst_w * dst_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[x * dst_w + (src_h - 1 - y)] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
+    for y in 0..src_h {
+        for x in 0..src_w {
+            let col_src = if SWAP_DIMS { y } else { x };
+            let row_src = if SWAP_DIMS { x } else { y };
+            let col = if COL_FLIP { dst_w - 1 - col_src } else { col_src };
+            let row = if ROW_FLIP { dst_h - 1 - row_src } else { row_src };
+            dst[row * dst_w + col] = src[y * src_w + x];
         }
-
-        wl_output::Transform::_180 => {
-            let mut dst = vec![0u32; src_w * src_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[(src_h - 1 - y) * src_w + (src_w - 1 - x)] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: capture.width, height: capture.height }
-        }
-
-        wl_output::Transform::_270 => {
-            let dst_w = src_h;
-            let dst_h = src_w;
-            let mut dst = vec![0u32; dst_w * dst_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[(src_w - 1 - x) * dst_w + y] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
-        }
-
-        wl_output::Transform::Flipped => {
-            let mut dst = vec![0u32; src_w * src_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[y * src_w + (src_w - 1 - x)] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: capture.width, height: capture.height }
-        }
-
-        wl_output::Transform::Flipped90 => {
-            let dst_w = src_h;
-            let dst_h = src_w;
-            let mut dst = vec![0u32; dst_w * dst_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[(src_w - 1 - x) * dst_w + (src_h - 1 - y)] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
-        }
-
-        wl_output::Transform::Flipped180 => {
-            let mut dst = vec![0u32; src_w * src_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[(src_h - 1 - y) * src_w + x] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: capture.width, height: capture.height }
-        }
-
-        wl_output::Transform::Flipped270 => {
-            let dst_w = src_h;
-            let dst_h = src_w;
-            let mut dst = vec![0u32; dst_w * dst_h];
-            for y in 0..src_h {
-                for x in 0..src_w {
-                    dst[x * dst_w + y] = src[y * src_w + x];
-                }
-            }
-            ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
-        }
-
-        _ => capture,
     }
+
+    ScreenCapture { xrgb_buffer: dst, width: dst_w as u32, height: dst_h as u32 }
+}
+
+/// Copy a sub-rectangle out of an XRGB capture into a fresh buffer.
+/// Caller must ensure (x+w, y+h) ≤ (src.width, src.height).
+#[cfg(unix)]
+pub(crate) fn crop_xrgb(src: &ScreenCapture, x: u32, y: u32, w: u32, h: u32) -> ScreenCapture {
+    let src_w = src.width as usize;
+    let xs = x as usize;
+    let ws = w as usize;
+    let mut buf = Vec::with_capacity(ws * h as usize);
+    for row in 0..h as usize {
+        let off = (y as usize + row) * src_w + xs;
+        buf.extend_from_slice(&src.xrgb_buffer[off..off + ws]);
+    }
+    ScreenCapture { xrgb_buffer: buf, width: w, height: h }
 }
 
 /// Convert decoded RGBA image to XRGB u32 buffer
@@ -317,6 +306,7 @@ pub struct OutputMeta {
     pub name: String,
     pub logical_pos: (i32, i32),
     pub logical_w: i32,
+    pub logical_h: i32,
     pub transform: wl_output::Transform,
 }
 
@@ -327,8 +317,14 @@ pub fn capture_all_outputs(
     screencopy: Option<(&wayland_client::Connection, &wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1, &wayland_client::protocol::wl_shm::WlShm)>,
     dbus_conn: Option<&zbus::blocking::Connection>,
 ) -> Result<PhysicalCanvas> {
+    // Phase 0 diagnostic: force Tier3 fallback path for testing (skip Tier1/Tier2).
+    let force_tier3 = std::env::var("IE_R_FORCE_TIER3").is_ok();
+    if force_tier3 {
+        log_warn("IE_R_FORCE_TIER3 set: skipping Tier1 (WLR) and Tier2 (KWin per-output)");
+    }
+
     // --- Tier 1: WLR Screencopy (Hyprland / Sway) ---
-    if let Some((conn, manager, wl_shm)) = screencopy {
+    if !force_tier3 && let Some((conn, manager, wl_shm)) = screencopy {
         let handles: Vec<_> = output_meta.iter().map(|meta| {
             let conn = conn.clone();
             let manager = manager.clone();
@@ -336,10 +332,11 @@ pub fn capture_all_outputs(
             let out_clone = meta.output.clone();
             let logical_pos = meta.logical_pos;
             let logical_w = meta.logical_w;
+            let logical_h = meta.logical_h;
             let transform = meta.transform;
             std::thread::spawn(move || {
                 wlr::capture_output(&conn, &manager, &wl_shm, &out_clone)
-                    .map(|capture| MonitorTile::from_capture(capture, out_clone, logical_pos, logical_w, transform))
+                    .map(|capture| MonitorTile::from_capture(capture, out_clone, logical_pos, logical_w, logical_h, transform))
             })
         }).collect();
 
@@ -355,7 +352,7 @@ pub fn capture_all_outputs(
     }
 
     // --- Tier 2: KWin per-output DBus (Plasma multi-monitor) ---
-    if let Some(conn) = dbus_conn {
+    if !force_tier3 && let Some(conn) = dbus_conn {
         let tiles: Vec<_> = output_meta.iter()
             .filter(|m| !m.name.is_empty())
             .filter_map(|meta| {
@@ -365,6 +362,7 @@ pub fn capture_all_outputs(
                         meta.output.clone(),
                         meta.logical_pos,
                         meta.logical_w,
+                        meta.logical_h,
                         meta.transform,
                     )),
                     Err(e) => {
@@ -386,8 +384,86 @@ pub fn capture_all_outputs(
 
     // --- Tier 3: single-capture fallback (KWin single / XDG Portal / Spectacle) ---
     let capture = portal::capture_screen(dbus_conn)?;
+
+    // Try to split the virtual-desktop capture into per-output tiles.
+    // If the heuristic accepts, render gets a real multi-tile canvas
+    // (no smoosh); otherwise we fall back to single-tile (legacy behavior).
+    if let Some(tiles) = try_split_virtual_desktop(&capture, output_meta) {
+        log_step("Tier3", &format!("split → {} tile(s)", tiles.len()));
+        return Ok(PhysicalCanvas::build(tiles));
+    }
+
+    log_warn("Tier3: split heuristic rejected — single-tile fallback (smoosh likely)");
     let output = output_meta.first().map(|m| m.output.clone());
     Ok(PhysicalCanvas::from_single(capture, output))
+}
+
+/// Attempt to slice a virtual-desktop capture (XDG Portal / KWin single /
+/// Spectacle) into per-output tiles using the compositor-reported layout.
+///
+/// Heuristic — accept the split only when the capture cleanly matches the
+/// logical union of all outputs at a single uniform scale:
+///   * `capture.size ≈ union.size × s` for some `s ∈ {0.5, 1.0, 1.5, 2.0, …}`
+///   * `sx == sy` within tolerance
+///   * all outputs report `Transform::Normal` (rotated outputs deferred)
+///
+/// Empirical (Hyprland XDG Portal):
+///   * scale=1.0 case: capture 6400×2400 = union 6400×2400 (no scaling)
+///   * scale=2.0 case: capture 8960×2880 = union 4480×1440 × 2 (HiDPI on)
+///   * non-zero union origin (e.g. min_x=1920) handled via offset subtraction
+///
+/// Returns `None` if the capture format is unexpected (e.g. Spectacle on X11
+/// with overlapping displays, mixed-scale Wayland configs we haven't seen yet).
+#[cfg(unix)]
+fn try_split_virtual_desktop(
+    capture: &ScreenCapture,
+    output_meta: &[OutputMeta],
+) -> Option<Vec<MonitorTile>> {
+    if output_meta.is_empty() { return None; }
+
+    let min_x = output_meta.iter().map(|m| m.logical_pos.0).min()?;
+    let min_y = output_meta.iter().map(|m| m.logical_pos.1).min()?;
+    let max_x = output_meta.iter().map(|m| m.logical_pos.0 + m.logical_w).max()?;
+    let max_y = output_meta.iter().map(|m| m.logical_pos.1 + m.logical_h).max()?;
+    let union_w = max_x - min_x;
+    let union_h = max_y - min_y;
+    if union_w <= 0 || union_h <= 0 { return None; }
+
+    let sx = capture.width  as f64 / union_w as f64;
+    let sy = capture.height as f64 / union_h as f64;
+    let s  = (sx + sy) * 0.5;
+
+    // sx and sy must agree (uniform scaling)
+    if (sx - sy).abs() / s.max(1e-6) > 0.01 { return None; }
+    // s must be a sane multiple of 0.5 (1.0, 1.5, 2.0, 2.5, 3.0…)
+    let s_round = (s * 2.0).round() / 2.0;
+    if s_round < 0.95 || (s - s_round).abs() > 0.05 { return None; }
+    // rotated outputs in single-capture mode aren't worth handling yet
+    if output_meta.iter().any(|m| m.transform != wl_output::Transform::Normal) {
+        return None;
+    }
+
+    let mut tiles = Vec::with_capacity(output_meta.len());
+    for m in output_meta {
+        let px = ((m.logical_pos.0 - min_x) as f64 * s_round).round() as i32;
+        let py = ((m.logical_pos.1 - min_y) as f64 * s_round).round() as i32;
+        let pw = (m.logical_w as f64 * s_round).round() as i32;
+        let ph = (m.logical_h as f64 * s_round).round() as i32;
+        if px < 0 || py < 0 || pw <= 0 || ph <= 0 { return None; }
+        if (px + pw) as u32 > capture.width || (py + ph) as u32 > capture.height {
+            return None;
+        }
+        let sub = crop_xrgb(capture, px as u32, py as u32, pw as u32, ph as u32);
+        tiles.push(MonitorTile::from_capture(
+            sub,
+            m.output.clone(),
+            m.logical_pos,
+            m.logical_w,
+            m.logical_h,
+            m.transform,
+        ));
+    }
+    Some(tiles)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

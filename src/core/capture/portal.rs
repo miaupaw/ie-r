@@ -115,12 +115,32 @@ async fn capture_via_portal() -> Result<RgbaImage> {
 
 fn capture_via_spectacle() -> Result<ScreenCapture> {
     let output_path = "/tmp/ie-r-capture.png";
-    let _ = Command::new("spectacle")
+    // -m / --current: capture only the monitor under cursor.
+    // Without this Spectacle uses XCB on the X11 root window and returns the
+    // entire Xinerama bounding box (virtual desktop), which the X11 connector
+    // then squishes into a single-monitor window ("double vision" bug).
+    // Per-monitor mode matches the launch-monitor window 1:1 — no smoosh.
+    let status = match Command::new("spectacle")
         .arg("-b")
         .arg("-n")
+        .arg("-m")
         .arg("-o")
         .arg(output_path)
-        .status()?;
+        .status()
+    {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            log_warn("spectacle is not installed — last-resort capture path unavailable.");
+            log_warn("Install it via your package manager (e.g. `sudo pacman -S spectacle`,");
+            log_warn("`apt install kde-spectacle`, `dnf install spectacle`), or ensure that");
+            log_warn("xdg-desktop-portal is running so the Portal path succeeds first.");
+            return Err(anyhow!("spectacle binary not found in PATH"));
+        }
+        Err(e) => return Err(anyhow!("failed to spawn spectacle: {}", e)),
+    };
+    if !status.success() {
+        log_warn(&format!("spectacle exited unsuccessfully ({status}) — capture file may be missing"));
+    }
 
     let start_wait = Instant::now();
     let mut image_result: Result<ScreenCapture> = Err(anyhow!("File not found"));
@@ -128,7 +148,12 @@ fn capture_via_spectacle() -> Result<ScreenCapture> {
         if let Ok(file) = File::open(output_path) {
             let reader = image::ImageReader::new(BufReader::new(file)).with_guessed_format()?;
             if let Ok(dyn_img) = reader.decode() {
-                image_result = Ok(rgba_to_capture(&dyn_img.to_rgba8()));
+                let cap = rgba_to_capture(&dyn_img.to_rgba8());
+                log_step("Capture", &format!(
+                    "Spectacle: {}ms ({}x{})",
+                    start_wait.elapsed().as_millis(), cap.width, cap.height,
+                ));
+                image_result = Ok(cap);
                 break;
             }
         }
