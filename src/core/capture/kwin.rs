@@ -238,7 +238,8 @@ fn raw_to_xrgb(mut bytes: Vec<u8>, width: u32, height: u32, stride: u32, layout:
         let mut xrgb: Vec<u32> = match bytemuck::try_cast_vec(bytes) {
             Ok(v) => v,
             Err((_err, bytes)) => bytes
-                .chunks_exact(4)
+                .as_chunks::<4>().0
+                .iter()
                 .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect(),
         };
@@ -249,7 +250,7 @@ fn raw_to_xrgb(mut bytes: Vec<u8>, width: u32, height: u32, stride: u32, layout:
     // Slow path: byte-by-byte, row by row (padding between rows)
     let mut buf = Vec::with_capacity(num_pixels);
     for row in bytes.chunks_exact(stride as usize).take(height as usize) {
-        for c in row[..width as usize * 4].chunks_exact(4) {
+        for c in row[..width as usize * 4].as_chunks::<4>().0 {
             let (r, g, b) = match layout {
                 RawLayout::Rgbx => (c[0], c[1], c[2]),
                 RawLayout::Bgrx => (c[2], c[1], c[0]),
